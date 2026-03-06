@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.head_ref == 'release' && github.event.pull_request.merged == true
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            suffix: darwin-arm64
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            suffix: darwin-x64
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            suffix: linux-x64-gnu
+            flags: "--use-napi-cross"
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            suffix: linux-arm64-gnu
+            flags: "--use-napi-cross"
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            suffix: win32-x64-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/
+          key: cargo-registry-${{ matrix.target }}-${{ hashFiles('rust/sia-sdk-rs/**/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ matrix.target }}-
+
+      - name: Clone Rust SDK
+        run: git clone --branch alex/wasm-experimental --depth 1 https://github.com/alexfreska/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - name: Build NAPI binary
+        working-directory: rust/sia-sdk-rs/indexd_node
+        run: npx @napi-rs/cli build --release --target ${{ matrix.target }} ${{ matrix.flags }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: napi-${{ matrix.suffix }}
+          path: rust/sia-sdk-rs/indexd_node/indexd_node.*.node
+
+  test:
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install and build
+        run: bun install && bun run build
+
+      - name: Download darwin-arm64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: napi-darwin-arm64
+          path: node_modules/@siafoundation/sia-darwin-arm64/
+
+      - name: Run tests
+        run: bun run test:all
+
+  publish:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install and build
+        run: bun install && bun run build
+
+      - name: Download all NAPI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Read version
+        id: version
+        run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          publish_platform() {
+            local suffix=$1 os=$2 cpu=$3
+            local dir=$(mktemp -d)
+            local version=${{ steps.version.outputs.version }}
+
+            cat > "$dir/package.json" <<PKGJSON
+          {
+            "name": "@siafoundation/sia-${suffix}",
+            "version": "${version}",
+            "os": ["${os}"],
+            "cpu": ["${cpu}"],
+            "main": "indexd_node.node",
+            "files": ["indexd_node.node"],
+            "license": "MIT"
+          }
+          PKGJSON
+
+            cp artifacts/napi-${suffix}/indexd_node.*.node "$dir/indexd_node.node"
+            cd "$dir" && npm publish --access public
+            cd -
+          }
+
+          publish_platform darwin-arm64 darwin arm64
+          publish_platform darwin-x64 darwin x64
+          publish_platform linux-x64-gnu linux x64
+          publish_platform linux-arm64-gnu linux arm64
+          publish_platform win32-x64-msvc win32 x64
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --ignore-scripts --access public
+
+      - name: Setup Knope
+        uses: knope-dev/action@407e9ef7c272d2dd53a4e71e39a7839e29933c48
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: knope release

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+rust/sia-sdk-rs/
+.DS_Store
+*.tgz

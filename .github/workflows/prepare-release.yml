@@ -1,0 +1,49 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-release:
+    if: "!contains(github.event.head_commit.message, 'chore: prepare release')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Knope
+        uses: knope-dev/action@407e9ef7c272d2dd53a4e71e39a7839e29933c48
+
+      - name: Prepare Release
+        run: knope prepare-release --verbose
+
+      - name: Sync optionalDependencies versions
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const v = pkg.version;
+            for (const k of Object.keys(pkg.optionalDependencies || {})) {
+              pkg.optionalDependencies[k] = v;
+            }
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          delete-branch: true
+          commit-message: "chore: prepare release"
+          title: Release
+          base: main
+          branch: release
+          body: |
+            This PR was automatically created to prepare the release. Merge the PR when you are ready to release. See the changelog for more details.

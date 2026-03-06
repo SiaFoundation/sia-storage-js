@@ -1,0 +1,10 @@
+{
+  "name": "sia-wasm",
+  "type": "module",
+  "description": "Pre-built WASM SDK for the Sia network",
+  "version": "0.2.0",
+  "license": "MIT",
+  "main": "sia.js",
+  "types": "sia.d.ts",
+  "sideEffects": false
+}

@@ -1,0 +1,45 @@
+{
+  "name": "@siafoundation/sia",
+  "version": "0.4.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "wasm", "src/workers"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.js",
+      "bun": "./dist/index.node.js",
+      "node": {
+        "types": "./dist/index.node.d.ts",
+        "import": "./dist/index.node.js"
+      },
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./wasm/sia.js",
+    "./wasm/*": "./wasm/*"
+  },
+  "scripts": {
+    "build": "tsup && mkdir -p dist/workers && cp src/workers/*.ts dist/workers/ && bun run scripts/patch-wasm-glue.ts",
+    "build-wasm": "bun run scripts/build-wasm.ts --force",
+    "setup": "bun run scripts/setup-rust.ts",
+    "setup-napi-test": "bun run scripts/setup-napi-test.ts",
+    "test": "bun test src/tests/format.test.ts src/tests/hex.test.ts src/tests/build-variants.test.ts",
+    "test:integration": "bun test src/tests/install-integration.test.ts",
+    "test:all": "bun test",
+    "prepublishOnly": "bun run build && bun test",
+    "publish-npm": "npm publish --access public"
+  },
+  "optionalDependencies": {
+    "@siafoundation/sia-darwin-arm64": "0.4.0",
+    "@siafoundation/sia-darwin-x64": "0.4.0",
+    "@siafoundation/sia-linux-x64-gnu": "0.4.0",
+    "@siafoundation/sia-linux-arm64-gnu": "0.4.0",
+    "@siafoundation/sia-win32-x64-msvc": "0.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "tsup": "^8.4.0",
+    "typescript": "~5.9.3"
+  }
+}
