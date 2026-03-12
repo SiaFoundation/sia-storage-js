@@ -3,3 +3,5 @@ dist/
 rust/sia-sdk-rs/
 .DS_Store
 *.tgz
+.env
+.npmrc

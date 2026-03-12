@@ -130,8 +130,7 @@ const sdk = await builder.register(phrase)
 const client = new SiaClient(sdk, indexerUrl)
 
 // 6. Export and persist the app key for reconnection
-const appKey = sdk.appKey()
-const keyHex = toHex(appKey.export())
+const keyHex = toHex(client.appKey().export())
 // Store keyHex in localStorage or similar
 ```
 
@@ -151,8 +150,6 @@ const client = await connect('https://app.sia.storage', appKey)
 
 ### Upload
 
-The `upload` function splits a file into slabs and uploads them in parallel. In the browser this uses Web Workers; in Node.js parallelism is handled natively by the Rust runtime.
-
 ```ts
 import { upload } from '@siafoundation/sia'
 
@@ -160,22 +157,11 @@ const object = await upload(client, file, (progress) => {
   console.log(`${progress.phase}: ${progress.slabsComplete}/${progress.slabsTotal} slabs`)
 })
 
-// Pin the object to the indexer so it persists
-await client.sdk.pinObject(object)
+// Pin the object so it persists
+await client.pinObject(object)
 ```
 
-For smaller files, you can also upload directly on the main thread without workers:
-
-```ts
-import { UploadOptions } from '@siafoundation/sia'
-
-const data = new Uint8Array(await file.arrayBuffer())
-const opts = new UploadOptions()
-const object = await client.sdk.upload(data, opts, (current, total) => {
-  console.log(`${current}/${total} shards`)
-})
-await client.sdk.pinObject(object)
-```
+Small files (≤40 MiB) are uploaded directly on the main thread. Larger files are split into slabs and uploaded in parallel — using Web Workers in the browser and native threads in Node.js.
 
 ### Download
 
@@ -185,9 +171,9 @@ import { download } from '@siafoundation/sia'
 const data = await download(client, object, (progress) => {
   console.log(`${progress.phase}: ${progress.bytesComplete}/${progress.bytesTotal} bytes`)
 })
-
-// data is a Uint8Array of the decrypted file contents
 ```
+
+Like uploads, small objects are downloaded on the main thread and larger objects use parallel workers automatically.
 
 For partial reads (e.g. video seeking), use a range download — only the overlapping slabs are fetched:
 
@@ -209,7 +195,7 @@ const meta = new TextEncoder().encode(JSON.stringify({
   size: file.size,
 }))
 object.updateMetadata(meta)
-await sdk.updateObjectMetadata(object)
+await client.updateObjectMetadata(object)
 
 // Read metadata
 import { decodeMetadata } from '@siafoundation/sia'
@@ -220,10 +206,10 @@ const parsed = decodeMetadata(object.metadata())
 
 ```ts
 // Create a share link valid for 24 hours
-const shareUrl = client.sdk.shareObject(object, Date.now() + 86_400_000)
+const shareUrl = client.shareObject(object, Date.now() + 86_400_000)
 
 // Download a shared object
-const shared = await client.sdk.sharedObject(shareUrl)
+const shared = await client.sharedObject(shareUrl)
 const data = await download(client, shared)
 ```
 
@@ -246,37 +232,32 @@ const client = await connect('https://indexer.example.com', new AppKey(fromHex(k
 | Export | Description |
 |--------|-------------|
 | `initSia()` | Initialize the SDK (loads WASM in browser, validates native addon in Node.js) |
-| `SiaClient` | Wrapper that bundles an SDK instance with connection details |
 | `connect(indexerUrl, appKey)` | Reconnect a returning user — returns `SiaClient \| null` |
-| `upload(client, file, onProgress, numWorkers?)` | Parallel file upload (Web Workers in browser, native threads in Node.js) |
-| `download(client, object, onProgress?, config?)` | Parallel download — full or range |
+| `upload(client, file, onProgress, numWorkers?)` | Upload a file — auto-selects main thread or parallel workers based on size |
+| `download(client, object, onProgress?, config?)` | Download an object — full or range, auto-selects parallelism |
 | `generateRecoveryPhrase()` | Generate a 12-word BIP-39 recovery phrase |
 | `validateRecoveryPhrase(phrase)` | Validate a recovery phrase |
 | `setLogLevel(level)` | Control log verbosity (`"debug"`, `"info"`, `"warn"`, `"error"`) |
 | `toHex(bytes)` / `fromHex(hex)` | Convert between `Uint8Array` and hex strings |
 | `decodeMetadata(bytes)` | Decode object metadata from bytes to JSON |
 
-### SDK
+### SiaClient
 
-Instance methods available on the `sdk` property of `SiaClient`.
+Wraps an authenticated SDK connection. Created via `connect()` or `new SiaClient(sdk, indexerUrl)`.
 
 | Method | Description |
 |--------|-------------|
-| `upload(data, options, onProgress)` | Upload a `Uint8Array` on the main thread |
-| `download(object, options, onProgress)` | Download an object on the main thread |
-| `downloadRange(object, offset, length, options, onSector)` | Download a byte range — only fetches overlapping slabs |
-| `pinObject(object)` | Pin an object to the indexer so it persists |
-| `deleteObject(key)` | Delete an object by its hex key |
+| `appKey()` | Returns the `AppKey` used by this client |
 | `object(key)` | Retrieve a pinned object by its hex key |
+| `deleteObject(key)` | Delete an object by its hex key |
+| `pinObject(object)` | Pin an object so it persists |
 | `updateObjectMetadata(object)` | Update an object's metadata on the indexer |
-| `shareObject(object, validUntilMs)` | Create a share URL valid until the given timestamp |
 | `sharedObject(shareUrl)` | Retrieve a shared object from a share URL |
-| `objectEvents(cursor?, limit)` | List object events for syncing (cursor-based pagination) |
-| `hosts()` | Returns available hosts as a JSON array |
+| `shareObject(object, validUntilMs)` | Create a share URL valid until the given timestamp |
+| `objectEvents(cursor?, limit)` | List object events (cursor-based pagination) |
+| `hosts()` | Returns available hosts |
 | `account()` | Returns account information |
 | `pruneSlabs()` | Prune unused slabs from the indexer |
-| `appKey()` | Returns the `AppKey` used by this SDK instance |
-| `slabDataSize()` | Default slab data size in bytes |
 
 ### Builder
 
@@ -324,9 +305,7 @@ An encrypted object stored on Sia.
 
 | Export | Description |
 |--------|-------------|
-| `UploadOptions` | Upload config — `dataShards`, `parityShards`, `maxInflight`, `slabDataSize()` |
-| `DownloadOptions` | Download config — `maxInflight` |
-| `DownloadConfig` | Parallel download config — `workers`, `range`, `maxInflight` |
+| `DownloadConfig` | Download config — `workers`, `range`, `maxInflight` |
 
 ## License
 

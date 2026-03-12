@@ -52,17 +52,20 @@ describe('browser entry (WASM) — static checks', () => {
     expect(dts).toContain('declare function connect')
   })
 
-  test('declares download and upload functions', () => {
-    expect(dts).toContain('declare function download')
-    expect(dts).toContain('declare function upload')
+  test('SiaClient has upload and download methods', () => {
+    expect(dts).toContain('upload(file:')
+    expect(dts).toContain('download(object:')
+    expect(dts).toContain('downloadRange(object:')
+  })
+
+  test('declares Builder class', () => {
+    expect(dts).toContain('declare class Builder')
   })
 
   test('re-exports WASM SDK types', () => {
     expect(dts).toContain('AppKey')
     expect(dts).toContain('Builder')
     expect(dts).toContain('PinnedObject')
-    expect(dts).toContain('UploadOptions')
-    expect(dts).toContain('DownloadOptions')
     expect(dts).toContain('generateRecoveryPhrase')
     expect(dts).toContain('validateRecoveryPhrase')
     expect(dts).toContain('setLogLevel')
@@ -106,8 +109,6 @@ describe('node entry (NAPI)', () => {
   test('exports NAPI SDK symbols', () => {
     expect(typeof mod.initSia).toBe('function')
     expect(typeof mod.connect).toBe('function')
-    expect(typeof mod.download).toBe('function')
-    expect(typeof mod.upload).toBe('function')
     expect(typeof mod.generateRecoveryPhrase).toBe('function')
     expect(typeof mod.validateRecoveryPhrase).toBe('function')
     expect(typeof mod.setLogLevel).toBe('function')
@@ -115,8 +116,6 @@ describe('node entry (NAPI)', () => {
     expect(mod.AppKey).toBeDefined()
     expect(mod.Builder).toBeDefined()
     expect(mod.PinnedObject).toBeDefined()
-    expect(mod.UploadOptions).toBeDefined()
-    expect(mod.DownloadOptions).toBeDefined()
   })
 
   test('shared utilities work correctly', () => {
@@ -125,68 +124,6 @@ describe('node entry (NAPI)', () => {
     expect(
       mod.decodeMetadata(new TextEncoder().encode('{"key":"value"}')),
     ).toEqual({ key: 'value' })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Node UploadOptions / DownloadOptions
-// ---------------------------------------------------------------------------
-
-describe('node UploadOptions', () => {
-  let UploadOptions: any
-
-  beforeAll(async () => {
-    const m = await import('../../dist/index.node.js')
-    UploadOptions = m.UploadOptions
-  })
-
-  test('has correct defaults', () => {
-    const opts = new UploadOptions()
-    expect(opts.maxInflight).toBe(8)
-    expect(opts.dataShards).toBeUndefined()
-    expect(opts.parityShards).toBeUndefined()
-  })
-
-  test('slabDataSize uses default 10 data shards', () => {
-    const opts = new UploadOptions()
-    expect(opts.slabDataSize()).toBe(10 * 4 * 1024 * 1024)
-  })
-
-  test('slabDataSize respects custom dataShards', () => {
-    const opts = new UploadOptions()
-    opts.dataShards = 5
-    expect(opts.slabDataSize()).toBe(5 * 4 * 1024 * 1024)
-  })
-
-  test('_toNative() returns plain object', () => {
-    const opts = new UploadOptions()
-    opts.maxInflight = 4
-    opts.dataShards = 7
-    expect(opts._toNative()).toEqual({
-      dataShards: 7,
-      parityShards: undefined,
-      maxInflight: 4,
-    })
-  })
-})
-
-describe('node DownloadOptions', () => {
-  let DownloadOptions: any
-
-  beforeAll(async () => {
-    const m = await import('../../dist/index.node.js')
-    DownloadOptions = m.DownloadOptions
-  })
-
-  test('has correct defaults', () => {
-    const opts = new DownloadOptions()
-    expect(opts.maxInflight).toBe(10)
-  })
-
-  test('_toNative() returns plain object', () => {
-    const opts = new DownloadOptions()
-    opts.maxInflight = 5
-    expect(opts._toNative()).toEqual({ maxInflight: 5 })
   })
 })
 
@@ -316,16 +253,12 @@ describe('API surface parity', () => {
       'SiaClient',
       'connect',
       'initSia',
-      'download',
-      'upload',
       'toHex',
       'fromHex',
       'decodeMetadata',
       'AppKey',
       'Builder',
       'PinnedObject',
-      'UploadOptions',
-      'DownloadOptions',
       'generateRecoveryPhrase',
       'validateRecoveryPhrase',
       'setLogLevel',

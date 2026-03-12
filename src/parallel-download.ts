@@ -1,5 +1,4 @@
-import type { SiaClient } from './wasm/client'
-import type { PinnedObject } from './wasm/init'
+import type { PinnedObject, SDK } from './wasm/init'
 import { DownloadOptions } from './wasm/init'
 
 export type DownloadProgress = {
@@ -18,19 +17,26 @@ export type DownloadConfig = {
 }
 
 /**
- * Download an object from Sia using a pool of Web Workers for parallel slab retrieval.
- * Supports full downloads and byte-range requests via {@link DownloadConfig.range}.
+ * Download an object from Sia. Small objects (single slab, ~40 MiB) and
+ * byte-range requests are handled on the main thread. Larger objects use a
+ * pool of Web Workers for parallel slab retrieval.
+ *
+ * @internal Called by SiaClient.download() — not exported directly.
  */
-export async function download(
-  client: SiaClient,
+export async function downloadImpl(
+  sdk: SDK,
+  keyHex: string,
+  indexerUrl: string,
   object: PinnedObject,
   onProgress?: (p: DownloadProgress) => void,
   config?: DownloadConfig,
 ): Promise<Uint8Array> {
-  const { sdk, keyHex, indexerUrl } = client
   const { range, maxInflight = 10 } = config ?? {}
 
-  // Range download: runs on main thread, no workers needed
+  // Range download: runs on main thread, no workers needed.
+  // TODO: For very large ranges spanning many slabs, consider parallel
+  // slab retrieval. Current use cases (SQLite page reads, video seeking)
+  // are small enough that main-thread is fine.
   if (range) {
     const opts = new DownloadOptions()
     opts.maxInflight = maxInflight
@@ -71,13 +77,51 @@ export async function download(
     return data
   }
 
-  // Full download: worker pool
+  // Full download
   const numWorkers = config?.workers ?? 4
   const slabCount = object.slabCount()
   const slabLengths: number[] = object.slabLengths()
   const totalBytes = slabLengths.reduce((a, b) => a + b, 0)
 
-  // Cap workers at slab count
+  // Small objects: download directly on main thread without workers
+  if (slabCount <= 1) {
+    const dlOpts = new DownloadOptions()
+    dlOpts.maxInflight = maxInflight
+
+    onProgress?.({
+      phase: 'downloading',
+      slabsComplete: 0,
+      slabsTotal: slabCount,
+      bytesComplete: 0,
+      bytesTotal: totalBytes,
+    })
+
+    const data = await sdk.download(
+      object,
+      dlOpts,
+      (current: number, total: number) => {
+        onProgress?.({
+          phase: 'downloading',
+          slabsComplete: current,
+          slabsTotal: total,
+          bytesComplete: 0,
+          bytesTotal: totalBytes,
+        })
+      },
+    )
+
+    onProgress?.({
+      phase: 'assembling',
+      slabsComplete: slabCount,
+      slabsTotal: slabCount,
+      bytesComplete: totalBytes,
+      bytesTotal: totalBytes,
+    })
+
+    return data
+  }
+
+  // Large objects: worker pool for parallel slab downloads
   const actualWorkers = Math.min(numWorkers, Math.max(slabCount, 1))
 
   onProgress?.({

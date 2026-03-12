@@ -1,5 +1,7 @@
 import { loadNativeAddon } from './load'
 
+// ── Native types (from NAPI addon) ──────────────────────────────
+
 type NativeAppKey = {
   publicKey(): string
   sign(message: Buffer): Buffer
@@ -120,6 +122,34 @@ type NativeBuilder = {
   register(mnemonic: string): Promise<NativeSDK>
 }
 
+// ── Progress types (identical to WASM) ──────────────────────────
+
+export type UploadProgress = {
+  phase: 'connecting' | 'uploading' | 'assembling' | 'pinning'
+  slabsComplete: number
+  slabsTotal: number
+  shardsComplete: number
+  shardsTotal: number
+  hosts?: string[]
+}
+
+export type DownloadProgress = {
+  phase: 'connecting' | 'downloading' | 'assembling'
+  slabsComplete: number
+  slabsTotal: number
+  bytesComplete: number
+  bytesTotal: number
+  hostKey?: string
+}
+
+export type DownloadConfig = {
+  workers?: number
+  range?: { offset: number; length: number }
+  maxInflight?: number
+}
+
+// ── Wrapper classes ─────────────────────────────────────────────
+
 export class PinnedObject {
   /** @internal */
   readonly _native: NativePinnedObject
@@ -210,14 +240,13 @@ export class AppKey {
   }
 }
 
-export class UploadOptions {
+// ── Internal SDK wrapper ────────────────────────────────────────
+
+class UploadOptions {
   dataShards?: number
   parityShards?: number
   maxInflight: number = 8
 
-  constructor() {}
-
-  /** @internal */
   _toNative(): NativeUploadOptions {
     return {
       dataShards: this.dataShards,
@@ -225,19 +254,11 @@ export class UploadOptions {
       maxInflight: this.maxInflight,
     }
   }
-
-  slabDataSize(): number {
-    // Default: 10 data shards * 4 MiB sector size
-    return (this.dataShards ?? 10) * 4 * 1024 * 1024
-  }
 }
 
-export class DownloadOptions {
+class DownloadOptions {
   maxInflight: number = 10
 
-  constructor() {}
-
-  /** @internal */
   _toNative(): NativeDownloadOptions {
     return {
       maxInflight: this.maxInflight,
@@ -245,7 +266,7 @@ export class DownloadOptions {
   }
 }
 
-export type SDK = {
+type SDK = {
   appKey(): AppKey
   upload(
     data: Uint8Array,
@@ -281,9 +302,6 @@ export type SDK = {
       object: PinnedObject | null
     }>
   >
-  generateDataKey(): Uint8Array
-  assembleObject(dataKey: Uint8Array, slabsJson: string): PinnedObject
-  slabDataSize(): number
   hosts(): Promise<unknown[]>
   account(): Promise<unknown>
   pruneSlabs(): Promise<void>
@@ -365,17 +383,6 @@ function wrapSDK(native: NativeSDK): SDK {
         object: e.object ? new PinnedObject(e.object) : null,
       }))
     },
-    generateDataKey(): Uint8Array {
-      return new Uint8Array(native.generateDataKey())
-    },
-    assembleObject(dataKey: Uint8Array, slabsJson: string): PinnedObject {
-      return new PinnedObject(
-        native.assembleObject(Buffer.from(dataKey), slabsJson),
-      )
-    },
-    slabDataSize(): number {
-      return native.slabDataSize()
-    },
     async hosts(): Promise<unknown[]> {
       return JSON.parse(await native.hosts())
     },
@@ -388,52 +395,235 @@ function wrapSDK(native: NativeSDK): SDK {
   }
 }
 
-export class Builder {
-  private _native: NativeBuilder
+// ── SiaClient ───────────────────────────────────────────────────
 
-  constructor(indexerUrl: string) {
-    this._native = new (loadNativeAddon().NativeBuilder)(indexerUrl)
+export class SiaClient {
+  #sdk: SDK
+  #indexerUrl: string
+  #keyHex: string
+
+  constructor(sdk: SDK, indexerUrl: string) {
+    this.#sdk = sdk
+    this.#indexerUrl = indexerUrl
+    const keyBytes = sdk.appKey().export()
+    this.#keyHex = Array.from(keyBytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
   }
 
-  async requestConnection(appMetaJson: string): Promise<void> {
-    return this._native.requestConnection(appMetaJson)
+  // ── Upload / Download ────────────────────────────────────────
+
+  /**
+   * Upload a file to Sia. Parallelism is handled natively by the Rust
+   * runtime (tokio).
+   */
+  async upload(
+    file: File | Uint8Array,
+    onProgress: (p: UploadProgress) => void,
+    options?: { workers?: number },
+  ): Promise<PinnedObject> {
+    let data: Uint8Array
+    if (file instanceof File) {
+      data = new Uint8Array(await file.arrayBuffer())
+    } else {
+      data = file
+    }
+
+    const opts = new UploadOptions()
+
+    onProgress({
+      phase: 'uploading',
+      slabsComplete: 0,
+      slabsTotal: 0,
+      shardsComplete: 0,
+      shardsTotal: 0,
+    })
+
+    const result = await this.#sdk.upload(data, opts, (current, total) => {
+      onProgress({
+        phase: 'uploading',
+        slabsComplete: 0,
+        slabsTotal: 0,
+        shardsComplete: current,
+        shardsTotal: total,
+      })
+    })
+
+    onProgress({
+      phase: 'assembling',
+      slabsComplete: 0,
+      slabsTotal: 0,
+      shardsComplete: 0,
+      shardsTotal: 0,
+    })
+
+    return result
   }
 
-  responseUrl(): string {
-    return this._native.responseUrl()
+  /**
+   * Download an object from Sia. Supports byte-range requests via
+   * config.range. Parallelism is handled natively by the Rust runtime.
+   */
+  async download(
+    object: PinnedObject,
+    onProgress?: (p: DownloadProgress) => void,
+    config?: DownloadConfig,
+  ): Promise<Uint8Array> {
+    const { maxInflight = 10 } = config ?? {}
+    const totalBytes = object.size()
+
+    if (config?.range) {
+      return this.downloadRange(object, config.range.offset, config.range.length, {
+        maxInflight,
+      })
+    }
+
+    onProgress?.({
+      phase: 'downloading',
+      slabsComplete: 0,
+      slabsTotal: object.slabCount(),
+      bytesComplete: 0,
+      bytesTotal: totalBytes,
+    })
+
+    const opts = new DownloadOptions()
+    opts.maxInflight = maxInflight
+
+    const data = await this.#sdk.download(object, opts, (current, total) => {
+      onProgress?.({
+        phase: 'downloading',
+        slabsComplete: current,
+        slabsTotal: total,
+        bytesComplete: 0,
+        bytesTotal: totalBytes,
+      })
+    })
+
+    onProgress?.({
+      phase: 'assembling',
+      slabsComplete: object.slabCount(),
+      slabsTotal: object.slabCount(),
+      bytesComplete: totalBytes,
+      bytesTotal: totalBytes,
+    })
+
+    return data
   }
 
-  async waitForApproval(): Promise<void> {
-    return this._native.waitForApproval()
+  /**
+   * Download a byte range from an object. Only the overlapping slabs are
+   * fetched. Runs on the main thread.
+   */
+  async downloadRange(
+    object: PinnedObject,
+    offset: number,
+    length: number,
+    options?: { maxInflight?: number; onHost?: (hostKey: string) => void },
+  ): Promise<Uint8Array> {
+    const opts = new DownloadOptions()
+    opts.maxInflight = options?.maxInflight ?? 10
+    return this.#sdk.downloadRange(
+      object,
+      offset,
+      length,
+      opts,
+      options?.onHost ?? noop,
+    )
   }
 
-  setConnectionResponse(appIdHex: string, responseJson: string): void {
-    this._native.setConnectionResponse(appIdHex, responseJson)
+  // ── Object operations ────────────────────────────────────────
+
+  appKey(): AppKey {
+    return this.#sdk.appKey()
   }
 
-  async connected(appKey: AppKey): Promise<SDK | null> {
-    const native = await this._native.connected(appKey._native)
-    if (!native) return null
-    return wrapSDK(native)
+  async object(key: string): Promise<PinnedObject> {
+    return this.#sdk.object(key)
   }
 
-  async register(mnemonic: string): Promise<SDK> {
-    return wrapSDK(await this._native.register(mnemonic))
+  async deleteObject(key: string): Promise<void> {
+    return this.#sdk.deleteObject(key)
+  }
+
+  async pinObject(object: PinnedObject): Promise<void> {
+    return this.#sdk.pinObject(object)
+  }
+
+  async updateObjectMetadata(object: PinnedObject): Promise<void> {
+    return this.#sdk.updateObjectMetadata(object)
+  }
+
+  async sharedObject(shareUrl: string): Promise<PinnedObject> {
+    return this.#sdk.sharedObject(shareUrl)
+  }
+
+  shareObject(object: PinnedObject, validUntilMs: number): string {
+    return this.#sdk.shareObject(object, validUntilMs)
+  }
+
+  async objectEvents(
+    cursor: string | null | undefined,
+    limit: number,
+  ): Promise<
+    Array<{
+      id: string
+      deleted: boolean
+      updatedAt: number
+      object: PinnedObject | null
+    }>
+  > {
+    return this.#sdk.objectEvents(cursor, limit)
+  }
+
+  async hosts(): Promise<unknown[]> {
+    return this.#sdk.hosts()
+  }
+
+  async account(): Promise<unknown> {
+    return this.#sdk.account()
+  }
+
+  async pruneSlabs(): Promise<void> {
+    return this.#sdk.pruneSlabs()
   }
 }
 
-export class SiaClient {
-  readonly sdk: SDK
-  readonly indexerUrl: string
-  readonly keyHex: string
+// ── Builder ─────────────────────────────────────────────────────
 
-  constructor(sdk: SDK, indexerUrl: string) {
-    this.sdk = sdk
-    this.indexerUrl = indexerUrl
-    const keyBytes = sdk.appKey().export()
-    this.keyHex = Array.from(keyBytes)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
+export class Builder {
+  #native: NativeBuilder
+  #indexerUrl: string
+
+  constructor(indexerUrl: string) {
+    this.#native = new (loadNativeAddon().NativeBuilder)(indexerUrl)
+    this.#indexerUrl = indexerUrl
+  }
+
+  async requestConnection(appMetaJson: string): Promise<void> {
+    return this.#native.requestConnection(appMetaJson)
+  }
+
+  responseUrl(): string {
+    return this.#native.responseUrl()
+  }
+
+  async waitForApproval(): Promise<void> {
+    return this.#native.waitForApproval()
+  }
+
+  setConnectionResponse(appIdHex: string, responseJson: string): void {
+    this.#native.setConnectionResponse(appIdHex, responseJson)
+  }
+
+  async connected(appKey: AppKey): Promise<SiaClient | null> {
+    const native = await this.#native.connected(appKey._native)
+    if (!native) return null
+    return new SiaClient(wrapSDK(native), this.#indexerUrl)
+  }
+
+  async register(mnemonic: string): Promise<SiaClient> {
+    const sdk = wrapSDK(await this.#native.register(mnemonic))
+    return new SiaClient(sdk, this.#indexerUrl)
   }
 }
 
@@ -442,7 +632,5 @@ export async function connect(
   appKey: AppKey,
 ): Promise<SiaClient | null> {
   const builder = new Builder(indexerUrl)
-  const sdk = await builder.connected(appKey)
-  if (!sdk) return null
-  return new SiaClient(sdk, indexerUrl)
+  return builder.connected(appKey)
 }

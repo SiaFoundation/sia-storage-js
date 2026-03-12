@@ -2,9 +2,9 @@ name: Prepare Release
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+  # push:
+  #   branches:
+  #     - main
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Knope
-        uses: knope-dev/action@407e9ef7c272d2dd53a4e71e39a7839e29933c48
+        uses: knope-dev/action@v2.1.2
 
       - name: Prepare Release
         run: knope prepare-release --verbose

@@ -1,9 +1,10 @@
 name: Release
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
+  workflow_dispatch:
+  # pull_request:
+  #   types: [closed]
+  #   branches: [main]
 
 permissions:
   contents: write
@@ -150,7 +151,7 @@ jobs:
         run: npm publish --ignore-scripts --access public
 
       - name: Setup Knope
-        uses: knope-dev/action@407e9ef7c272d2dd53a4e71e39a7839e29933c48
+        uses: knope-dev/action@v2.1.2
 
       - name: Create GitHub release
         env:

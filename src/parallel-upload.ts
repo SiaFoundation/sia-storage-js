@@ -1,5 +1,5 @@
-import type { SiaClient } from './wasm/client'
-import type { PinnedObject } from './wasm/init'
+import type { PinnedObject, SDK } from './wasm/init'
+import { UploadOptions } from './wasm/init'
 
 export type UploadProgress = {
   phase: 'connecting' | 'uploading' | 'assembling' | 'pinning'
@@ -11,21 +11,63 @@ export type UploadProgress = {
 }
 
 /**
- * Upload a file to Sia using a pool of Web Workers for parallel slab uploads.
- * Returns a PinnedObject representing the uploaded object.
+ * Upload a file to Sia. Small files (single slab, ~40 MiB) are uploaded
+ * directly on the main thread. Larger files use a pool of Web Workers for
+ * parallel slab uploads.
+ *
+ * @internal Called by SiaClient.upload() — not exported directly.
  */
-export async function upload(
-  client: SiaClient,
-  file: File,
+export async function uploadImpl(
+  sdk: SDK,
+  keyHex: string,
+  indexerUrl: string,
+  file: File | Uint8Array,
   onProgress: (p: UploadProgress) => void,
   numWorkers = 4,
 ): Promise<PinnedObject> {
-  const { sdk, keyHex, indexerUrl } = client
-  const fileSize = file.size
+  const fileSize = file instanceof File ? file.size : file.byteLength
   const SLAB_DATA_SIZE = sdk.slabDataSize()
   const slabCount = fileSize === 0 ? 0 : Math.ceil(fileSize / SLAB_DATA_SIZE)
 
-  // Generate shared data key on main thread
+  // Small files: upload directly on the main thread without workers
+  if (slabCount <= 1) {
+    const data =
+      file instanceof File
+        ? new Uint8Array(await file.arrayBuffer())
+        : file
+
+    onProgress({
+      phase: 'uploading',
+      slabsComplete: 0,
+      slabsTotal: slabCount,
+      shardsComplete: 0,
+      shardsTotal: slabCount * 30,
+    })
+
+    const opts = new UploadOptions()
+    opts.maxInflight = 8
+    const obj = await sdk.upload(data, opts, (current: number, total: number) => {
+      onProgress({
+        phase: 'uploading',
+        slabsComplete: 0,
+        slabsTotal: slabCount,
+        shardsComplete: current,
+        shardsTotal: total,
+      })
+    })
+
+    onProgress({
+      phase: 'assembling',
+      slabsComplete: slabCount,
+      slabsTotal: slabCount,
+      shardsComplete: slabCount * 30,
+      shardsTotal: slabCount * 30,
+    })
+
+    return obj
+  }
+
+  // Large files: worker pool for parallel slab uploads
   const dataKey = sdk.generateDataKey()
   const dataKeyBuf = dataKey.buffer.slice(
     dataKey.byteOffset,
@@ -104,8 +146,25 @@ export async function upload(
     function sendSlabToWorker(worker: Worker, idx: number) {
       const slabOffset = idx * SLAB_DATA_SIZE
       const slabEnd = Math.min(slabOffset + SLAB_DATA_SIZE, fileSize)
-      const blob = file.slice(slabOffset, slabEnd)
-      blob.arrayBuffer().then((buf) => {
+      if (file instanceof File) {
+        const blob = file.slice(slabOffset, slabEnd)
+        blob.arrayBuffer().then((buf) => {
+          worker.postMessage(
+            {
+              type: 'upload-slab',
+              slabIndex: idx,
+              data: buf,
+              dataKey: dataKeyBuf,
+              streamOffset: slabOffset,
+            },
+            [buf],
+          )
+        })
+      } else {
+        const buf = file.buffer.slice(
+          file.byteOffset + slabOffset,
+          file.byteOffset + slabEnd,
+        )
         worker.postMessage(
           {
             type: 'upload-slab',
@@ -116,7 +175,7 @@ export async function upload(
           },
           [buf],
         )
-      })
+      }
     }
 
     function assignWork(worker: Worker) {
