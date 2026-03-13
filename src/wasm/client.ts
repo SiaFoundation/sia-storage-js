@@ -4,10 +4,45 @@ import {
   DownloadOptions,
   PinnedObject,
   type SDK,
+  UploadOptions,
+  WasmPackedUpload,
 } from './init'
 import { toHex } from '../hex'
 import { uploadImpl, type UploadProgress } from '../parallel-upload'
 import { downloadImpl, type DownloadConfig, type DownloadProgress } from '../parallel-download'
+
+export class PackedUpload {
+  #inner: WasmPackedUpload
+
+  /** @internal */
+  constructor(inner: WasmPackedUpload) {
+    this.#inner = inner
+  }
+
+  remaining(): number {
+    return this.#inner.remaining()
+  }
+
+  length(): number {
+    return this.#inner.length()
+  }
+
+  slabs(): number {
+    return this.#inner.slabs()
+  }
+
+  async add(data: Uint8Array): Promise<number> {
+    return this.#inner.add(data)
+  }
+
+  async finalize(): Promise<PinnedObject[]> {
+    return this.#inner.finalize() as Promise<PinnedObject[]>
+  }
+
+  async cancel(): Promise<void> {
+    this.#inner.cancel()
+  }
+}
 
 export class SiaClient {
   #sdk: SDK
@@ -137,6 +172,18 @@ export class SiaClient {
 
   async pruneSlabs(): Promise<void> {
     return this.#sdk.pruneSlabs()
+  }
+
+  uploadPacked(options?: {
+    dataShards?: number
+    parityShards?: number
+    maxInflight?: number
+  }): PackedUpload {
+    const opts = new UploadOptions()
+    if (options?.dataShards != null) opts.dataShards = options.dataShards
+    if (options?.parityShards != null) opts.parityShards = options.parityShards
+    if (options?.maxInflight != null) opts.maxInflight = options.maxInflight
+    return new PackedUpload(this.#sdk.uploadPacked(opts))
   }
 }
 

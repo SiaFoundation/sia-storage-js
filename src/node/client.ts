@@ -14,6 +14,15 @@ type NativeStreamingUpload = {
   promise(): Promise<NativePinnedObject>
 }
 
+type NativePackedUpload = {
+  remaining(): bigint
+  length(): bigint
+  slabs(): bigint
+  add(data: Buffer): Promise<bigint>
+  finalize(): Promise<NativePinnedObject[]>
+  cancel(): Promise<void>
+}
+
 type NativeSDK = {
   appKey(): NativeAppKey
   objectEvents(
@@ -88,6 +97,7 @@ type NativeSDK = {
     options: NativeUploadOptions,
     onProgress: (current: number, total: number) => void,
   ): NativeStreamingUpload
+  uploadPacked(options: NativeUploadOptions): NativePackedUpload
 }
 
 type NativePinnedObject = {
@@ -102,6 +112,7 @@ type NativePinnedObject = {
   createdAt(): number
   updatedAt(): number
 }
+
 
 type NativeUploadOptions = {
   dataShards?: number
@@ -196,6 +207,14 @@ export class PinnedObject {
     return this._native.seal(appKey._native)
   }
 
+  createdAt(): number {
+    return this._native.createdAt()
+  }
+
+  updatedAt(): number {
+    return this._native.updatedAt()
+  }
+
   static open(appKey: AppKey, sealedJson: string): PinnedObject {
     const native = loadNativeAddon().NativePinnedObject.open(
       appKey._native,
@@ -237,6 +256,41 @@ export class AppKey {
 
   export(): Uint8Array {
     return new Uint8Array(this._native.export())
+  }
+}
+
+export class PackedUpload {
+  /** @internal */
+  readonly _native: NativePackedUpload
+
+  /** @internal */
+  constructor(native: NativePackedUpload) {
+    this._native = native
+  }
+
+  remaining(): number {
+    return Number(this._native.remaining())
+  }
+
+  length(): number {
+    return Number(this._native.length())
+  }
+
+  slabs(): number {
+    return Number(this._native.slabs())
+  }
+
+  async add(data: Uint8Array): Promise<number> {
+    return Number(await this._native.add(Buffer.from(data)))
+  }
+
+  async finalize(): Promise<PinnedObject[]> {
+    const results = await this._native.finalize()
+    return results.map((n: NativePinnedObject) => new PinnedObject(n))
+  }
+
+  async cancel(): Promise<void> {
+    return this._native.cancel()
   }
 }
 
@@ -305,6 +359,7 @@ type SDK = {
   hosts(): Promise<unknown[]>
   account(): Promise<unknown>
   pruneSlabs(): Promise<void>
+  uploadPacked(options: UploadOptions): PackedUpload
 }
 
 const noop = () => {}
@@ -391,6 +446,9 @@ function wrapSDK(native: NativeSDK): SDK {
     },
     async pruneSlabs(): Promise<void> {
       return native.pruneSlabs()
+    },
+    uploadPacked(options: UploadOptions): PackedUpload {
+      return new PackedUpload(native.uploadPacked(options._toNative()))
     },
   }
 }
@@ -585,6 +643,18 @@ export class SiaClient {
 
   async pruneSlabs(): Promise<void> {
     return this.#sdk.pruneSlabs()
+  }
+
+  uploadPacked(options?: {
+    dataShards?: number
+    parityShards?: number
+    maxInflight?: number
+  }): PackedUpload {
+    const opts = new UploadOptions()
+    if (options?.dataShards != null) opts.dataShards = options.dataShards
+    if (options?.parityShards != null) opts.parityShards = options.parityShards
+    if (options?.maxInflight != null) opts.maxInflight = options.maxInflight
+    return this.#sdk.uploadPacked(opts)
   }
 }
 

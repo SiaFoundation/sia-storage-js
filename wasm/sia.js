@@ -285,24 +285,24 @@ export function setLogLevel(level) {
     wasm.setLogLevel(ptr0, len0);
 }
 
-function _assertClass(instance, klass) {
-    if (!(instance instanceof klass)) {
-        throw new Error(`expected instance of ${klass.name}`);
-    }
-}
-
 function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
     getUint8ArrayMemory0().set(arg, ptr / 1);
     WASM_VECTOR_LEN = arg.length;
     return ptr;
 }
-function wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke______(arg0, arg1) {
-    wasm.wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke______(arg0, arg1);
-}
 
+function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+        throw new Error(`expected instance of ${klass.name}`);
+    }
+}
 function wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke___wasm_bindgen_87aa27fb821f84de___JsValue_____(arg0, arg1, arg2) {
     wasm.wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke___wasm_bindgen_87aa27fb821f84de___JsValue_____(arg0, arg1, arg2);
+}
+
+function wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke______(arg0, arg1) {
+    wasm.wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke______(arg0, arg1);
 }
 
 function wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke___wasm_bindgen_87aa27fb821f84de___JsValue__wasm_bindgen_87aa27fb821f84de___JsValue_____(arg0, arg1, arg2, arg3) {
@@ -596,6 +596,93 @@ export class DownloadOptions {
 }
 if (Symbol.dispose) DownloadOptions.prototype[Symbol.dispose] = DownloadOptions.prototype.free;
 
+const PackedUploadFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_packedupload_free(ptr >>> 0, 1));
+/**
+ * A packed upload allows multiple objects to be uploaded together in a single
+ * upload. This can be more efficient than uploading each object separately if
+ * the size of the objects is less than the minimum slab size.
+ */
+export class PackedUpload {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(PackedUpload.prototype);
+        obj.__wbg_ptr = ptr;
+        PackedUploadFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PackedUploadFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_packedupload_free(ptr, 0);
+    }
+    /**
+     * Adds data to the packed upload. Returns the number of bytes written.
+     * @param {Uint8Array} data
+     * @returns {Promise<number>}
+     */
+    add(data) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.packedupload_add(this.__wbg_ptr, ptr0, len0);
+        return ret;
+    }
+    /**
+     * Finalizes the upload and returns the resulting PinnedObjects.
+     * @returns {Promise<any>}
+     */
+    finalize() {
+        const ret = wasm.packedupload_finalize(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Returns the number of slabs in the upload.
+     * @returns {number}
+     */
+    slabs() {
+        const ret = wasm.packedupload_slabs(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Cancels the upload. Drops the channel sender which aborts the
+     * background upload task.
+     */
+    cancel() {
+        const ret = wasm.packedupload_cancel(this.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Returns the total number of bytes added so far.
+     * @returns {number}
+     */
+    length() {
+        const ret = wasm.packedupload_length(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Returns the number of bytes remaining until reaching the next slab
+     * boundary. Adding objects that fit within this size avoids starting a
+     * new slab.
+     * @returns {number}
+     */
+    remaining() {
+        const ret = wasm.packedupload_remaining(this.__wbg_ptr);
+        return ret;
+    }
+}
+if (Symbol.dispose) PackedUpload.prototype[Symbol.dispose] = PackedUpload.prototype.free;
+
 const PinnedObjectFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_pinnedobject_free(ptr >>> 0, 1));
@@ -622,6 +709,17 @@ export class PinnedObject {
         wasm.__wbg_pinnedobject_free(ptr, 0);
     }
     /**
+     * Returns the creation timestamp as milliseconds since the Unix epoch.
+     * @returns {number}
+     */
+    createdAt() {
+        const ret = wasm.pinnedobject_createdAt(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0];
+    }
+    /**
      * Returns the number of slabs in the object.
      *
      * Useful for sizing a Web Worker pool (cap workers at slab count) and
@@ -634,6 +732,17 @@ export class PinnedObject {
             throw takeFromExternrefTable0(ret[1]);
         }
         return ret[0] >>> 0;
+    }
+    /**
+     * Returns the last-updated timestamp as milliseconds since the Unix epoch.
+     * @returns {number}
+     */
+    updatedAt() {
+        const ret = wasm.pinnedobject_updatedAt(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0];
     }
     /**
      * Returns the actual data length of each slab as a JS array of numbers.
@@ -1053,6 +1162,20 @@ export class SDK {
             throw takeFromExternrefTable0(ret[1]);
         }
         return ret[0];
+    }
+    /**
+     * Creates a new packed upload. Multiple objects can be added to the
+     * upload and they will share slabs, reducing wasted space for small files.
+     *
+     * Returns a `PackedUpload` handle with `add()`, `finalize()`, and `cancel()` methods.
+     * @param {UploadOptions} options
+     * @returns {PackedUpload}
+     */
+    uploadPacked(options) {
+        _assertClass(options, UploadOptions);
+        var ptr0 = options.__destroy_into_raw();
+        const ret = wasm.sdk_uploadPacked(this.__wbg_ptr, ptr0);
+        return PackedUpload.__wrap(ret);
     }
     /**
      * Returns the slab data size for default options (data_shards * SECTOR_SIZE).
@@ -1812,19 +1935,19 @@ function __wbg_get_imports() {
         const ret = BigInt.asUintN(64, arg0);
         return ret;
     };
-    imports.wbg.__wbindgen_cast_6b1b481ec5d6dc1d = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 642, function: Function { arguments: [], shim_idx: 643, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen_87aa27fb821f84de___closure__destroy___dyn_core_9c0b49b6ed63a8be___ops__function__FnMut_____Output_______, wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke______);
-        return ret;
-    };
-    imports.wbg.__wbindgen_cast_6dd6c45de6b563c7 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 682, function: Function { arguments: [Externref], shim_idx: 683, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+    imports.wbg.__wbindgen_cast_8018d70477139901 = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 804, function: Function { arguments: [Externref], shim_idx: 805, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
         const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen_87aa27fb821f84de___closure__destroy___dyn_core_9c0b49b6ed63a8be___ops__function__FnMut__wasm_bindgen_87aa27fb821f84de___JsValue____Output_______, wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke___wasm_bindgen_87aa27fb821f84de___JsValue_____);
         return ret;
     };
     imports.wbg.__wbindgen_cast_9ae0607507abb057 = function(arg0) {
         // Cast intrinsic for `I64 -> Externref`.
         const ret = arg0;
+        return ret;
+    };
+    imports.wbg.__wbindgen_cast_a24e04e44013c82d = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 764, function: Function { arguments: [], shim_idx: 765, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen_87aa27fb821f84de___closure__destroy___dyn_core_9c0b49b6ed63a8be___ops__function__FnMut_____Output_______, wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke______);
         return ret;
     };
     imports.wbg.__wbindgen_cast_cb9088102bce6b30 = function(arg0, arg1) {

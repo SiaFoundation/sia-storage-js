@@ -1,10 +1,9 @@
-export { Builder, SiaClient, connect } from './wasm/client'
+export { Builder, PackedUpload, SiaClient, connect } from './wasm/client'
 export { decodeMetadata } from './format'
 export { fromHex, toHex } from './hex'
 export {
   AppKey,
   PinnedObject,
-  type SlabInfo,
   generateRecoveryPhrase,
   initSia,
   setLogLevel,

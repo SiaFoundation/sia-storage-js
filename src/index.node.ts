@@ -1,6 +1,7 @@
 export {
   AppKey,
   Builder,
+  PackedUpload,
   PinnedObject,
   SiaClient,
   connect,

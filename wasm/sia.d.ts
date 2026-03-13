@@ -110,16 +110,51 @@ export class DownloadOptions {
   clone(): DownloadOptions;
   maxInflight: number;
 }
-export type SlabInfo = {
-  offset: number;
-  length: number;
-  minShards: number;
-  hostKeys: string[];
+/**
+ * A packed upload allows multiple objects to be uploaded together in a single
+ * upload. This can be more efficient than uploading each object separately if
+ * the size of the objects is less than the minimum slab size.
+ */
+export class PackedUpload {
+  private constructor();
+  free(): void;
+  [Symbol.dispose](): void;
+  /**
+   * Adds data to the packed upload. Returns the number of bytes written.
+   */
+  add(data: Uint8Array): Promise<number>;
+  /**
+   * Finalizes the upload and returns the resulting PinnedObjects.
+   */
+  finalize(): Promise<any>;
+  /**
+   * Returns the number of slabs in the upload.
+   */
+  slabs(): number;
+  /**
+   * Cancels the upload. Drops the channel sender which aborts the
+   * background upload task.
+   */
+  cancel(): void;
+  /**
+   * Returns the total number of bytes added so far.
+   */
+  length(): number;
+  /**
+   * Returns the number of bytes remaining until reaching the next slab
+   * boundary. Adding objects that fit within this size avoids starting a
+   * new slab.
+   */
+  remaining(): number;
 }
 export class PinnedObject {
   private constructor();
   free(): void;
   [Symbol.dispose](): void;
+  /**
+   * Returns the creation timestamp as milliseconds since the Unix epoch.
+   */
+  createdAt(): number;
   /**
    * Returns the number of slabs in the object.
    *
@@ -127,6 +162,10 @@ export class PinnedObject {
    * for tracking completion when downloading or uploading slabs in parallel.
    */
   slabCount(): number;
+  /**
+   * Returns the last-updated timestamp as milliseconds since the Unix epoch.
+   */
+  updatedAt(): number;
   /**
    * Returns the actual data length of each slab as a JS array of numbers.
    *
@@ -161,7 +200,7 @@ export class PinnedObject {
    * (an array of host public-key strings identifying which hosts store
    * each sector of the slab).
    */
-  slabs(): SlabInfo[];
+  slabs(): any;
   /**
    * Returns the metadata as a Uint8Array.
    */
@@ -230,7 +269,7 @@ export class SDK {
    * Used by slab download workers to enable parallel slab downloads across
    * multiple Web Workers, each with their own SDK instance and thread.
    */
-  downloadSlabByIndex(object: PinnedObject, slab_index: number, options: DownloadOptions, on_sector: (hostKey: string) => void): Promise<Uint8Array>;
+  downloadSlabByIndex(object: PinnedObject, slab_index: number, options: DownloadOptions, on_sector: Function): Promise<Uint8Array>;
   /**
    * Updates the metadata of an object already stored in the indexer.
    */
@@ -273,6 +312,13 @@ export class SDK {
    * Returns the current offset after adding this chunk.
    */
   uploadChunk(session_id: number, chunk: Uint8Array): number;
+  /**
+   * Creates a new packed upload. Multiple objects can be added to the
+   * upload and they will share slabs, reducing wasted space for small files.
+   *
+   * Returns a `PackedUpload` handle with `add()`, `finalize()`, and `cancel()` methods.
+   */
+  uploadPacked(options: UploadOptions): PackedUpload;
   /**
    * Returns the slab data size for default options (data_shards * SECTOR_SIZE).
    * Prefer `UploadOptions.slabDataSize()` for custom shard counts.
@@ -392,6 +438,7 @@ export interface InitOutput {
   readonly __wbg_get_downloadoptions_maxInflight: (a: number) => number;
   readonly __wbg_get_uploadoptions_dataShards: (a: number) => number;
   readonly __wbg_get_uploadoptions_parityShards: (a: number) => number;
+  readonly __wbg_packedupload_free: (a: number, b: number) => void;
   readonly __wbg_pinnedobject_free: (a: number, b: number) => void;
   readonly __wbg_sdk_free: (a: number, b: number) => void;
   readonly __wbg_set_downloadoptions_maxInflight: (a: number, b: number) => void;
@@ -416,6 +463,13 @@ export interface InitOutput {
   readonly fetchHostSettings: (a: number, b: number) => any;
   readonly generateRecoveryPhrase: () => [number, number];
   readonly init_panic_hook: () => void;
+  readonly packedupload_add: (a: number, b: number, c: number) => any;
+  readonly packedupload_cancel: (a: number) => [number, number];
+  readonly packedupload_finalize: (a: number) => any;
+  readonly packedupload_length: (a: number) => number;
+  readonly packedupload_remaining: (a: number) => number;
+  readonly packedupload_slabs: (a: number) => number;
+  readonly pinnedobject_createdAt: (a: number) => [number, number, number];
   readonly pinnedobject_id: (a: number) => [number, number, number, number];
   readonly pinnedobject_metadata: (a: number) => [number, number, number];
   readonly pinnedobject_open: (a: number, b: number, c: number) => [number, number, number];
@@ -425,6 +479,7 @@ export interface InitOutput {
   readonly pinnedobject_slabLengths: (a: number) => [number, number, number];
   readonly pinnedobject_slabs: (a: number) => [number, number, number];
   readonly pinnedobject_updateMetadata: (a: number, b: number, c: number) => [number, number];
+  readonly pinnedobject_updatedAt: (a: number) => [number, number, number];
   readonly sdk_account: (a: number) => any;
   readonly sdk_appKey: (a: number) => number;
   readonly sdk_assembleObject: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
@@ -448,6 +503,7 @@ export interface InitOutput {
   readonly sdk_updateObjectMetadata: (a: number, b: number) => any;
   readonly sdk_upload: (a: number, b: number, c: number, d: number, e: any) => any;
   readonly sdk_uploadChunk: (a: number, b: number, c: number, d: number) => [number, number, number];
+  readonly sdk_uploadPacked: (a: number, b: number) => number;
   readonly sdk_uploadSlab: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: any) => any;
   readonly setLogLevel: (a: number, b: number) => void;
   readonly streamingupload_promise: (a: number) => any;
@@ -459,10 +515,10 @@ export interface InitOutput {
   readonly validateRecoveryPhrase: (a: number, b: number) => [number, number];
   readonly __wbg_set_uploadoptions_maxInflight: (a: number, b: number) => void;
   readonly __wbg_get_uploadoptions_maxInflight: (a: number) => number;
-  readonly wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke______: (a: number, b: number) => void;
-  readonly wasm_bindgen_87aa27fb821f84de___closure__destroy___dyn_core_9c0b49b6ed63a8be___ops__function__FnMut_____Output_______: (a: number, b: number) => void;
   readonly wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke___wasm_bindgen_87aa27fb821f84de___JsValue_____: (a: number, b: number, c: any) => void;
   readonly wasm_bindgen_87aa27fb821f84de___closure__destroy___dyn_core_9c0b49b6ed63a8be___ops__function__FnMut__wasm_bindgen_87aa27fb821f84de___JsValue____Output_______: (a: number, b: number) => void;
+  readonly wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke______: (a: number, b: number) => void;
+  readonly wasm_bindgen_87aa27fb821f84de___closure__destroy___dyn_core_9c0b49b6ed63a8be___ops__function__FnMut_____Output_______: (a: number, b: number) => void;
   readonly wasm_bindgen_87aa27fb821f84de___convert__closures_____invoke___wasm_bindgen_87aa27fb821f84de___JsValue__wasm_bindgen_87aa27fb821f84de___JsValue_____: (a: number, b: number, c: any, d: any) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
