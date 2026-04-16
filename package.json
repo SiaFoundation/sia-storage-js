@@ -1,0 +1,51 @@
+{
+  "name": "sia-storage",
+  "version": "0.0.6",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "wasm"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.js",
+      "bun": "./dist/index.node.cjs",
+      "node": {
+        "types": "./dist/index.node.d.ts",
+        "require": "./dist/index.node.cjs",
+        "import": "./dist/index.node.cjs"
+      },
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./wasm/sia_storage_wasm.js",
+    "./wasm/*": "./wasm/*"
+  },
+  "scripts": {
+    "build": "bun run build-wasm && tsup",
+    "build-wasm": "bun run scripts/build-wasm.ts",
+    "setup": "bun run scripts/setup-rust.ts",
+    "setup-napi-test": "bun run scripts/setup-napi-test.ts",
+    "test": "bun test src/tests/format.test.ts src/tests/hex.test.ts src/tests/build-variants.test.ts",
+    "test:integration": "bun test src/tests/install-integration.test.ts",
+    "test:browser-integration": "bun test src/tests/browser-integration.test.ts",
+    "test:all": "bun test",
+    "prepublishOnly": "bun run build && bun test",
+    "publish-npm": "bun run scripts/publish.ts"
+  },
+  "optionalDependencies": {
+    "sia-storage-darwin-arm64": "0.0.6",
+    "sia-storage-darwin-x64": "0.0.6",
+    "sia-storage-linux-x64-gnu": "0.0.6",
+    "sia-storage-linux-arm64-gnu": "0.0.6",
+    "sia-storage-win32-x64-msvc": "0.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "playwright": "^1.58.2",
+    "tsup": "^8.4.0",
+    "typescript": "~5.9.3"
+  }
+}
