@@ -2,6 +2,8 @@ name: Release
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -138,6 +140,7 @@ jobs:
 
   publish:
     needs: [build-napi, build-wasm, test]
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
