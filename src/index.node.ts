@@ -27,5 +27,3 @@ export type {
   Slab,
   UploadOptions,
 } from './node/napi'
-export { decodeMetadata } from './format'
-export { fromHex, toHex } from './hex'

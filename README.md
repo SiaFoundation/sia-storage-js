@@ -13,7 +13,7 @@ npm install sia-storage
 ## Quick start
 
 ```ts
-import { initSia, Builder, generateRecoveryPhrase, toHex } from 'sia-storage'
+import { initSia, Builder, generateRecoveryPhrase } from 'sia-storage'
 
 await initSia()
 
@@ -26,14 +26,14 @@ const phrase = generateRecoveryPhrase() // show to user once, they save it
 const sdk = await builder.register(phrase)
 
 // persist this so the user doesn't re-auth next time
-const appKeyHex = toHex(sdk.appKey().export())
+const appKeyHex = sdk.appKey().export().toHex()
 ```
 
 Reconnecting a returning user:
 
 ```ts
-import { connect, AppKey, fromHex } from 'sia-storage'
-const sdk = await connect('https://sia.storage', appMeta, new AppKey(fromHex(appKeyHex)))
+import { connect, AppKey } from 'sia-storage'
+const sdk = await connect('https://sia.storage', appMeta, new AppKey(Uint8Array.fromHex(appKeyHex)))
 ```
 
 ## Uploading a file
@@ -74,8 +74,6 @@ for (const obj of await packed.finalize()) await sdk.pinObject(obj)
 | `validateRecoveryPhrase(phrase)` | Throws on invalid. |
 | `setLogger(callback, level)` | Forward SDK logs (callback ignored in browser; use `setLogLevel` there). |
 | `encodedSize(size, dataShards, parityShards)` | Encoded size after erasure coding. |
-| `toHex(bytes)` / `fromHex(hex)` | `Uint8Array` ↔ hex. |
-| `decodeMetadata(bytes)` | Decode object metadata bytes to JSON. |
 
 ### `Sdk`
 

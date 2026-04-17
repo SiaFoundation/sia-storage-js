@@ -25,11 +25,10 @@ bun run build            # runs build-wasm, then tsup
 Three tiers, cheapest first:
 
 ```bash
-bun run test                    # unit tests for utilities (toHex, decodeMetadata, etc.)
-bun run setup-napi-test         # build the NAPI binary for the current platform
-bun run test:integration        # pack + install into a temp dir, smoke-run in Node and Bun
-bun run test:browser-integration # pack + install into a temp Vite app, smoke-run in Chromium
-bun run test:all                # all of the above
+bun run setup-napi-test  # build the NAPI binary for the current platform
+bun run test             # pack + install into a temp dir, smoke-run in Node and Bun
+bun run test:browser     # pack + install into a temp Vite app, smoke-run in Chromium
+bun run test:all         # both of the above
 ```
 
 The browser tier needs Playwright's Chromium:

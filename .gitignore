@@ -6,4 +6,5 @@ rust/sia-sdk-rs/
 *.tgz
 .env
 .npmrc
+.claude/
 test-app/

@@ -83,6 +83,3 @@ export async function connect(
   const builder = new BuilderCls(indexerUrl, appMeta)
   return builder.connected(appKey)
 }
-
-export { decodeMetadata } from './format'
-export { fromHex, toHex } from './hex'
