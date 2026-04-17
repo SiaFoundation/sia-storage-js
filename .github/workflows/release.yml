@@ -4,12 +4,18 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: write
 
 jobs:
   build-napi:
+    # Skip closed PRs that weren't merged — no point building then.
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.action != 'closed' ||
+      github.event.pull_request.merged == true
     strategy:
       fail-fast: false
       matrix:
@@ -71,6 +77,10 @@ jobs:
           path: rust/sia-sdk-rs/sia_storage_napi/sia-storage.*.node
 
   build-wasm:
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.action != 'closed' ||
+      github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -137,10 +147,21 @@ jobs:
 
   publish:
     needs: [build-napi, build-wasm, test]
-    if: github.event_name == 'workflow_dispatch'
+    # Only publish on two triggers:
+    #   1. Manual workflow_dispatch.
+    #   2. The Knope release PR from the `release` branch being merged into main.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'closed' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.head.ref == 'release')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so `knope release` can find the changelog entry.
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
 
@@ -167,3 +188,11 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bun run scripts/publish.ts --ci
+
+      - name: Setup Knope
+        uses: knope-dev/action@v2.1.2
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: knope release
