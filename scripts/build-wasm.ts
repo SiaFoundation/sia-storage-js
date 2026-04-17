@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { copyFileSync, existsSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -72,6 +72,7 @@ execSync('wasm-pack build --target web --release --out-dir pkg', {
 })
 
 console.log('Copying artifacts into wasm/...')
+mkdirSync(wasmOut, { recursive: true })
 for (const name of [
   'sia_storage_wasm.js',
   'sia_storage_wasm_bg.wasm',

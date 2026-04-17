@@ -65,9 +65,10 @@ jobs:
       - name: Build NAPI binary
         working-directory: rust/sia-sdk-rs/sia_storage_napi
         env:
-          # ring's ARM assembly needs -march defined for the aarch64 cross-gcc.
-          # napi-cross's toolchain doesn't set this by default. Ignored by other targets.
-          CFLAGS_aarch64_unknown_linux_gnu: -march=armv8-a
+          # ring's ARM assembly needs __ARM_ARCH defined. napi-cross's GCC
+          # toolchain doesn't auto-define it from -march, so set both
+          # explicitly. Ignored by non-aarch64 targets.
+          CFLAGS_aarch64_unknown_linux_gnu: -march=armv8-a -D__ARM_ARCH=8
         run: bunx @napi-rs/cli build --release --target ${{ matrix.target }} ${{ matrix.flags }}
 
       - name: Upload artifact
