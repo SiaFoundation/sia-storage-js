@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const targetDir = resolve(__dirname, '../rust/sia-sdk-rs')
 
-// Pinned to a specific commit on SiaFoundation/sia-sdk-rs master.
+// Pinned to a specific commit on SiaFoundation/sia-sdk-rs.
 // Bump this when upstream changes need to flow through.
+// Currently on PR #334 (nate/fix-callbacks): fixes snake_case in WASM,
+// unifies upload arg order, and adds onShardUploaded progress callback.
 export const SIA_SDK_RS_REPO = 'https://github.com/SiaFoundation/sia-sdk-rs.git'
-export const SIA_SDK_RS_SHA = 'dc39feb8822a8aadc9d0fb97651f9904db018a93'
+export const SIA_SDK_RS_SHA = '3c8a911c71e82fdba41d431f3c7fe7ccfc325132'
 
 if (existsSync(targetDir)) {
   console.log('rust/sia-sdk-rs already exists, skipping clone.')

@@ -123,15 +123,12 @@ From `sdk.uploadPacked()`.
 
 ## Node vs browser — small differences
 
-Re-exports the Sia SDK's native-NAPI bindings in Node/Bun and its WASM bindings in the browser. The two surfaces are nearly identical. The handful of places they diverge:
+Re-exports the Sia SDK's native-NAPI bindings in Node/Bun and its WASM bindings in the browser. Near-identical surfaces; two places they diverge:
 
-- **App metadata:** Node uses `{ id: Buffer(32), ... }`; browser uses `{ appId: string (hex), ... }`.
-- **`upload` args:** Node takes `(object, stream, options, progressFn?)`; browser takes `(source, object, options)` with progress in `options.onProgress`.
-- **`uploadPacked`:** returns a Promise in Node, returns the handle directly in browser.
-- **Logging:** Node accepts a callback via `setLogger(cb, level)`; browser ignores the callback — use `setLogLevel(level)`.
-- **Byte/number types:** Node uses `Buffer` and `bigint` for sizes; browser uses `Uint8Array` and `number`.
+- **App metadata:** Node uses `{ id: Buffer(32), ... }`; browser uses `{ appId: string (hex), ... }`. Browser can't use fixed-size Buffers.
+- **Logging:** Node accepts a callback via `setLogger(cb, level)`; browser only has `setLogLevel(level)` — log messages go to `console.log`.
 
-These are differences in the upstream Rust bindings, not this package.
+Byte arrays and numeric types also differ a bit — Node returns `Buffer` and `bigint` for sizes, browser returns `Uint8Array` and `number`. These are upstream binding differences, not this package.
 
 ## License
 

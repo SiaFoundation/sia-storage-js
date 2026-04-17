@@ -17,9 +17,8 @@ export async function initSia(): Promise<void> {
   await initPromise
 }
 
-// Runtime + type re-exports straight from wasm-bindgen's generated glue.
-// Class names match NAPI; free-function names are snake_case below —
-// see README "Upstream API drift" for why, and for camelCase aliases.
+// Direct re-exports from wasm-bindgen's generated glue. The crate tags
+// free functions with js_name so they land as camelCase, matching NAPI.
 export {
   AppKey,
   Builder,
@@ -27,6 +26,10 @@ export {
   PackedUpload,
   PinnedObject,
   Sdk,
+  encodedSize,
+  generateRecoveryPhrase,
+  setLogLevel,
+  validateRecoveryPhrase,
 } from '../wasm/sia_storage_wasm.js'
 export type {
   Account,
@@ -37,6 +40,7 @@ export type {
   PinnedSlab,
   Sector,
   SealedObject,
+  ShardProgress,
   Slab,
   UploadOptions,
 } from '../wasm/sia_storage_wasm.js'
@@ -45,33 +49,19 @@ import {
   AppKey as AppKeyCls,
   Builder as BuilderCls,
   Sdk as SdkCls,
-  calculate_encoded_size,
-  generate_recovery_phrase,
-  set_log_level,
-  validate_recovery_phrase,
+  setLogLevel as setLogLevelFn,
 } from '../wasm/sia_storage_wasm.js'
 import type { AppMetadata } from '../wasm/sia_storage_wasm.js'
 
-// Free functions — upstream wasm-bindgen output uses snake_case. Re-export
-// under the camelCase names matching the Node surface.
-export const generateRecoveryPhrase: () => string = generate_recovery_phrase
-export const validateRecoveryPhrase: (phrase: string) => void =
-  validate_recovery_phrase
-export const setLogLevel: (level: string) => void = set_log_level
-export const encodedSize: (
-  size: number,
-  dataShards: number,
-  parityShards: number,
-) => number = calculate_encoded_size
-
-// Browser has no logger-callback equivalent yet. Provide a shim that forwards
-// the level and silently ignores the callback so consumer code written for
-// Node still type-checks and runs. Flagged for upstream parity.
+// Browser has no logger-callback equivalent yet. Forward the level and
+// silently ignore the callback so code written against the Node surface
+// still type-checks and runs. Log messages go to console.log via the
+// crate's built-in console logger.
 export function setLogger(
   _callback: (message: string) => void,
   level: string,
 ): void {
-  set_log_level(level)
+  setLogLevelFn(level)
 }
 
 export async function connect(

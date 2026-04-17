@@ -10,7 +10,7 @@ permissions:
 
 env:
   # Keep in sync with scripts/setup-rust.ts (SIA_SDK_RS_SHA).
-  SIA_SDK_RS_SHA: dc39feb8822a8aadc9d0fb97651f9904db018a93
+  SIA_SDK_RS_SHA: 3c8a911c71e82fdba41d431f3c7fe7ccfc325132
 
 jobs:
   build-napi:
