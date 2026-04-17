@@ -123,12 +123,14 @@ From `sdk.uploadPacked()`.
 
 ## Node vs browser — small differences
 
-Re-exports the Sia SDK's native-NAPI bindings in Node/Bun and its WASM bindings in the browser. Near-identical surfaces; two places they diverge:
+Re-exports the Sia SDK's native-NAPI bindings in Node/Bun and its WASM bindings in the browser. Near-identical surfaces; a few places they diverge:
 
 - **App metadata:** Node uses `{ id: Buffer(32), ... }`; browser uses `{ appId: string (hex), ... }`. Browser can't use fixed-size Buffers.
+- **`sdk.upload` args:** Node takes `(object, stream, options, progressFn?)`; browser takes `(source, object, options)` with progress via `options.onProgress`.
+- **`sdk.uploadPacked`:** returns a Promise on Node, returns the handle synchronously on browser.
 - **Logging:** Node accepts a callback via `setLogger(cb, level)`; browser only has `setLogLevel(level)` — log messages go to `console.log`.
 
-Byte arrays and numeric types also differ a bit — Node returns `Buffer` and `bigint` for sizes, browser returns `Uint8Array` and `number`. These are upstream binding differences, not this package.
+Byte arrays and numeric types also differ — Node returns `Buffer` and `bigint` for sizes, browser returns `Uint8Array` and `number`. These are upstream binding differences, not this package. Several of them ([#334](https://github.com/SiaFoundation/sia-sdk-rs/pull/334)) are being resolved upstream.
 
 ## License
 

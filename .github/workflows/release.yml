@@ -8,10 +8,6 @@ on:
 permissions:
   contents: write
 
-env:
-  # Keep in sync with scripts/setup-rust.ts (SIA_SDK_RS_SHA).
-  SIA_SDK_RS_SHA: 3c8a911c71e82fdba41d431f3c7fe7ccfc325132
-
 jobs:
   build-napi:
     strategy:
@@ -53,14 +49,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry/
-          key: cargo-registry-${{ matrix.target }}-${{ env.SIA_SDK_RS_SHA }}
+          key: cargo-registry-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: cargo-registry-${{ matrix.target }}-
 
-      - name: Clone Rust SDK
-        shell: bash
-        run: |
-          git clone https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
-          git -C rust/sia-sdk-rs checkout "$SIA_SDK_RS_SHA"
+      - name: Clone Rust SDK (master)
+        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - name: Build NAPI binary
         working-directory: rust/sia-sdk-rs/sia_storage_napi
@@ -91,10 +84,8 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Clone Rust SDK
-        run: |
-          git clone https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
-          git -C rust/sia-sdk-rs checkout "$SIA_SDK_RS_SHA"
+      - name: Clone Rust SDK (master)
+        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - name: Build WASM
         run: bun run build-wasm

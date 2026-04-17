@@ -17,8 +17,9 @@ export async function initSia(): Promise<void> {
   await initPromise
 }
 
-// Direct re-exports from wasm-bindgen's generated glue. The crate tags
-// free functions with js_name so they land as camelCase, matching NAPI.
+// Runtime + type re-exports straight from wasm-bindgen's generated glue.
+// Class names match NAPI; free-function names are snake_case below —
+// see README "Node vs browser" for why, and for camelCase aliases.
 export {
   AppKey,
   Builder,
@@ -26,10 +27,6 @@ export {
   PackedUpload,
   PinnedObject,
   Sdk,
-  encodedSize,
-  generateRecoveryPhrase,
-  setLogLevel,
-  validateRecoveryPhrase,
 } from '../wasm/sia_storage_wasm.js'
 export type {
   Account,
@@ -40,7 +37,6 @@ export type {
   PinnedSlab,
   Sector,
   SealedObject,
-  ShardProgress,
   Slab,
   UploadOptions,
 } from '../wasm/sia_storage_wasm.js'
@@ -49,11 +45,27 @@ import {
   AppKey as AppKeyCls,
   Builder as BuilderCls,
   Sdk as SdkCls,
-  setLogLevel as setLogLevelFn,
+  calculate_encoded_size,
+  generate_recovery_phrase,
+  set_log_level,
+  validate_recovery_phrase,
 } from '../wasm/sia_storage_wasm.js'
 import type { AppMetadata } from '../wasm/sia_storage_wasm.js'
 
-// Browser has no logger-callback equivalent yet. Forward the level and
+// Upstream WASM currently exports free functions as snake_case. Re-export
+// under camelCase to match the Node surface. Remove these when upstream
+// SiaFoundation/sia-sdk-rs#334 merges and emits camelCase via js_name.
+export const generateRecoveryPhrase: () => string = generate_recovery_phrase
+export const validateRecoveryPhrase: (phrase: string) => void =
+  validate_recovery_phrase
+export const setLogLevel: (level: string) => void = set_log_level
+export const encodedSize: (
+  size: number,
+  dataShards: number,
+  parityShards: number,
+) => number = calculate_encoded_size
+
+// Browser has no logger-callback equivalent. Forward the level and
 // silently ignore the callback so code written against the Node surface
 // still type-checks and runs. Log messages go to console.log via the
 // crate's built-in console logger.
@@ -61,7 +73,7 @@ export function setLogger(
   _callback: (message: string) => void,
   level: string,
 ): void {
-  setLogLevelFn(level)
+  set_log_level(level)
 }
 
 export async function connect(
