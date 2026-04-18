@@ -1,0 +1,39 @@
+name: Prepare release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-release:
+    # Skip the merge commit from the release PR itself so we don't loop.
+    if: "!contains(github.event.head_commit.message, 'chore: prepare release')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # PAT preferred so the release PR can trigger the Release workflow
+          # on its own. With GITHUB_TOKEN, PRs opened by the bot don't fire
+          # other workflows — you'd have to close+reopen the PR by hand.
+          token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Configure git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - uses: knope-dev/action@v2.1.2
+
+      - name: Knope prepare-release
+        # Non-zero exit when there are no changesets pending — succeed anyway.
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+        run: knope prepare-release --verbose
