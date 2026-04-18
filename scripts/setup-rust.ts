@@ -6,12 +6,15 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const targetDir = resolve(__dirname, '../rust/sia-sdk-rs')
 
-// Clone the upstream Rust SDK at whatever master is right now. This repo
-// is a build pipeline — triggering a release intentionally picks up the
-// latest master HEAD so new upstream changes flow through without a SHA
-// bump here.
+// Clone the upstream Rust SDK. This repo is a build pipeline —
+// triggering a release intentionally picks up the latest HEAD so new
+// upstream changes flow through without a SHA bump here.
+//
+// Temporarily pinned to alex/napi-typedef until that branch (which
+// enables napi-derive's type-def feature so our build can emit a clean
+// .d.ts) merges to master. Switch back to "master" once it lands.
 export const SIA_SDK_RS_REPO = 'https://github.com/SiaFoundation/sia-sdk-rs.git'
-export const SIA_SDK_RS_BRANCH = 'master'
+export const SIA_SDK_RS_BRANCH = 'alex/napi-typedef'
 
 if (existsSync(targetDir)) {
   console.log('rust/sia-sdk-rs already exists, skipping clone.')

@@ -1,13 +1,14 @@
-let addon: any = null
+import type * as Addon from './napi.generated'
+
+let addon: typeof Addon | null = null
 
 /**
  * Load the platform-specific native addon (.node binary).
  *
  * Uses static require() calls so bundlers (bun build --compile) can
- * statically analyze and embed the .node files. Only the matching
- * platform's require will succeed at runtime.
+ * statically analyze and embed the .node files.
  */
-export function loadNativeAddon(): any {
+export function loadNativeAddon(): typeof Addon {
   if (addon) return addon
 
   const platform = process.platform

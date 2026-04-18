@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Build the NAPI binary from rust/sia-sdk-rs/sia_storage_napi and install it
-// into node_modules so the node entry point can load it during tests.
+// into node_modules so the node entry point can load it during tests. Also
+// regenerates src/node/napi.generated.d.ts from napi-rs's --dts output.
 // Prerequisites: Rust toolchain, `bun run setup` already run.
 import { $ } from 'bun'
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -8,6 +9,7 @@ import { join } from 'node:path'
 
 const ROOT = join(import.meta.dir, '..')
 const NAPI_CRATE_DIR = join(ROOT, 'rust', 'sia-sdk-rs', 'sia_storage_napi')
+const TYPES_OUT = join(ROOT, 'src', 'node', 'napi.generated.d.ts')
 
 const platform = process.platform
 const arch = process.arch
@@ -24,12 +26,7 @@ const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'))
 // emits sia-storage.${platform}-${arch}.node. We keep this naming end-to-end.
 const binaryName = `sia-storage.${platform}-${arch}.node`
 const builtBinary = join(NAPI_CRATE_DIR, binaryName)
-
-// Skip if already installed.
-if (existsSync(join(pkgDir, 'sia-storage.node'))) {
-  console.log(`${pkgName} already installed, skipping build`)
-  process.exit(0)
-}
+const generatedDts = join(NAPI_CRATE_DIR, 'index.d.ts')
 
 if (!existsSync(NAPI_CRATE_DIR)) {
   console.error(`sia_storage_napi crate not found at ${NAPI_CRATE_DIR}`)
@@ -37,9 +34,11 @@ if (!existsSync(NAPI_CRATE_DIR)) {
   process.exit(1)
 }
 
-if (!existsSync(builtBinary)) {
-  console.log(`Building NAPI binary in ${NAPI_CRATE_DIR}...`)
-  await $`bunx @napi-rs/cli build --release --platform`.cwd(NAPI_CRATE_DIR)
+if (!existsSync(builtBinary) || !existsSync(generatedDts)) {
+  console.log(`Building NAPI binary + types in ${NAPI_CRATE_DIR}...`)
+  await $`bunx @napi-rs/cli build --release --platform --dts index.d.ts`.cwd(
+    NAPI_CRATE_DIR,
+  )
 }
 
 if (!existsSync(builtBinary)) {
@@ -57,5 +56,16 @@ writeFileSync(
     2,
   ),
 )
-
 console.log(`Installed ${pkgName} with binary from ${builtBinary}`)
+
+// Refresh the committed type declarations. Requires upstream's
+// sia_storage_napi/Cargo.toml to enable napi-derive's `type-def` feature.
+if (existsSync(generatedDts)) {
+  cpSync(generatedDts, TYPES_OUT)
+  console.log(`Updated ${TYPES_OUT}`)
+} else {
+  console.warn(
+    `Skipping types refresh — napi-rs didn't emit ${generatedDts}.\n` +
+      `Enable 'type-def' feature on napi-derive in sia_storage_napi/Cargo.toml.`,
+  )
+}

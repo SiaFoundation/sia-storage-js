@@ -2,6 +2,7 @@ node_modules/
 dist/
 wasm/sia_storage_wasm*
 rust/sia-sdk-rs/
+src/node/napi.generated.d.ts
 .DS_Store
 *.tgz
 .env

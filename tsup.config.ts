@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig([
-  // Browser entry (ESM + inline types)
+  // Browser entry (ESM + inline types).
   {
     entry: ['src/index.ts'],
     format: ['esm'],
@@ -13,22 +13,16 @@ export default defineConfig([
     // pipelines. tsup emits the import statement unchanged.
     external: [/\.\.\/wasm\/.*/],
   },
-  // Node/Bun entry runtime (CJS so require() stays as plain require,
-  // which lets bundlers like bun build --compile statically resolve
-  // and embed the native .node addon files)
+  // Node/Bun entry runtime (CJS so static require() stays inline for
+  // bundlers like bun build --compile that embed the matching .node
+  // file). Types for this entry are emitted by scripts/build-node-types.ts
+  // straight from the napi-rs generated d.ts — bundling them through
+  // tsup would dedupe class names with $1 suffixes.
   {
-    entry: ['src/index.node.ts'],
+    entry: { 'index.node': 'src/index.node.ts' },
     format: ['cjs'],
     dts: false,
     sourcemap: true,
     external: [/sia-storage-.*/],
-  },
-  // Node/Bun entry types (generated via a DTS-only ESM pass to get
-  // fully inlined declarations — tsup's CJS DTS output produces
-  // broken re-exports to source paths that don't ship in the package)
-  {
-    entry: { 'index.node': 'src/index.node.ts' },
-    format: ['esm'],
-    dts: { only: true },
   },
 ])

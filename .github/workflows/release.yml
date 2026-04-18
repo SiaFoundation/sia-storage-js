@@ -58,8 +58,9 @@ jobs:
           key: cargo-registry-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: cargo-registry-${{ matrix.target }}-
 
-      - name: Clone Rust SDK (master)
-        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+      - name: Clone Rust SDK
+        # Pinned to alex/napi-typedef until merged; revert to master after.
+        run: git clone --branch alex/napi-typedef --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - name: Build NAPI binary
         working-directory: rust/sia-sdk-rs/sia_storage_napi
@@ -68,13 +69,15 @@ jobs:
           # toolchain doesn't auto-define it from -march, so set both
           # explicitly. Ignored by non-aarch64 targets.
           CFLAGS_aarch64_unknown_linux_gnu: -march=armv8-a -D__ARM_ARCH=8
-        run: bunx @napi-rs/cli build --release --platform --target ${{ matrix.target }} ${{ matrix.flags }}
+        run: bunx @napi-rs/cli build --release --platform --dts index.d.ts --target ${{ matrix.target }} ${{ matrix.flags }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: napi-${{ matrix.suffix }}
-          path: rust/sia-sdk-rs/sia_storage_napi/sia-storage.*.node
+          path: |
+            rust/sia-sdk-rs/sia_storage_napi/sia-storage.*.node
+            rust/sia-sdk-rs/sia_storage_napi/index.d.ts
 
   build-wasm:
     if: |
@@ -94,8 +97,9 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Clone Rust SDK (master)
-        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+      - name: Clone Rust SDK
+        # Pinned to alex/napi-typedef until merged; revert to master after.
+        run: git clone --branch alex/napi-typedef --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - name: Build WASM
         run: bun run build-wasm
@@ -124,20 +128,21 @@ jobs:
           name: wasm
           path: wasm/
 
-      - name: Install and build
-        run: bun install && bun run build
-
       - name: Download darwin-arm64 NAPI artifact
         uses: actions/download-artifact@v4
         with:
           name: napi-darwin-arm64
           path: artifacts/napi-darwin-arm64/
 
-      - name: Stage NAPI binary for tests
+      - name: Stage NAPI binary + types
         run: |
           mkdir -p node_modules/sia-storage-darwin-arm64
           cp artifacts/napi-darwin-arm64/sia-storage.darwin-arm64.node node_modules/sia-storage-darwin-arm64/sia-storage.node
           echo '{"name":"sia-storage-darwin-arm64","main":"sia-storage.node"}' > node_modules/sia-storage-darwin-arm64/package.json
+          cp artifacts/napi-darwin-arm64/index.d.ts src/node/napi.generated.d.ts
+
+      - name: Install and build
+        run: bun install && bun run build
 
       - name: Install Playwright Chromium
         run: bunx playwright install chromium --with-deps
@@ -176,13 +181,17 @@ jobs:
           name: wasm
           path: wasm/
 
-      - name: Install and build
-        run: bun install && bun run build
-
       - name: Download all NAPI artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
+
+      - name: Stage NAPI types for build
+        # The .d.ts is identical across platforms; pick any one.
+        run: cp artifacts/napi-darwin-arm64/index.d.ts src/node/napi.generated.d.ts
+
+      - name: Install and build
+        run: bun install && bun run build
 
       - name: Publish (platform packages + main)
         env:

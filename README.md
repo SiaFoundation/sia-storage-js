@@ -1,8 +1,6 @@
 # sia-storage
 
-TypeScript SDK for building decentralized storage apps on the [Sia](https://sia.tech) network.
-
-Works in Node.js, Bun, and the browser. Install picks the right platform binary (native on Node/Bun, WASM on browser) — no bundler config needed in Vite, Next.js, webpack, esbuild, or Rollup.
+TypeScript SDK for building decentralized storage apps on the [Sia](https://sia.tech) network. Works in Node.js, Bun, and the browser.
 
 ## Install
 
@@ -17,15 +15,22 @@ import { initSia, Builder, generateRecoveryPhrase } from 'sia-storage'
 
 await initSia()
 
+const appMeta = {
+  appId: '0'.repeat(64),                // 32-byte app identifier (hex)
+  name: 'My App',
+  description: 'An app on the Sia network',
+  serviceUrl: 'https://myapp.com',
+}
+
 const builder = new Builder('https://sia.storage', appMeta)
 await builder.requestConnection()
-// show builder.responseUrl() to the user — they visit it to authorize
+// Show builder.responseUrl() to the user — they visit it to authorize.
 await builder.waitForApproval()
 
-const phrase = generateRecoveryPhrase() // show to user once, they save it
+const phrase = generateRecoveryPhrase()
 const sdk = await builder.register(phrase)
 
-// persist this so the user doesn't re-auth next time
+// Persist the app key so the user doesn't re-auth next time.
 const appKeyHex = sdk.appKey().export().toHex()
 ```
 
@@ -33,34 +38,74 @@ Reconnecting a returning user:
 
 ```ts
 import { connect, AppKey } from 'sia-storage'
-const sdk = await connect('https://sia.storage', appMeta, new AppKey(Uint8Array.fromHex(appKeyHex)))
+
+const sdk = await connect(
+  'https://sia.storage',
+  appMeta,
+  new AppKey(Uint8Array.fromHex(appKeyHex)),
+)
 ```
 
-## Uploading a file
+## Uploading
 
 ```ts
 import { PinnedObject } from 'sia-storage'
 
-const file = /* File | Blob | any source with a .stream() */
 const object = await sdk.upload(new PinnedObject(), file.stream(), { maxInflight: 10 })
 await sdk.pinObject(object)
 ```
 
-Downloading it back:
+Downloading:
 
 ```ts
 const stream = sdk.download(object)
 for await (const chunk of stream) { /* ... */ }
 ```
 
-Many small files — pack them into shared slabs:
+For many small files, share slabs via `uploadPacked`:
 
 ```ts
-const packed = await sdk.uploadPacked({ maxInflight: 10 })
+const packed = sdk.uploadPacked({ maxInflight: 10 })
 await packed.add(fileA.stream())
 await packed.add(fileB.stream())
 for (const obj of await packed.finalize()) await sdk.pinObject(obj)
 ```
+
+## Framework notes
+
+The browser build is WebAssembly — most bundlers handle it directly, a few need a small hint.
+
+**Vite**: works as-is.
+
+**Next.js (App Router)** — load from a Client Component, dynamically imported so the WebAssembly module isn't pulled into the server prerender:
+
+```tsx
+'use client'
+import dynamic from 'next/dynamic'
+const Storage = dynamic(() => import('./storage'), { ssr: false })
+export default function Page() { return <Storage /> }
+```
+
+**Webpack**:
+
+```js
+// webpack.config.js
+module.exports = { experiments: { asyncWebAssembly: true, topLevelAwait: true } }
+```
+
+**Rollup / esbuild** — copy the WebAssembly asset into your output directory:
+
+```bash
+cp node_modules/sia-storage/wasm/sia_storage_wasm_bg.wasm dist/
+```
+
+## Node vs browser
+
+Near-identical surfaces. Real differences:
+
+- App identifier: `appMeta.appId: string (hex)` on browser, `appMeta.id: Buffer(32)` on Node.
+- Logging: browser has `setLogLevel(level)` only — logs go to `console`. Node has `setLogger(callback, level)` with a callback.
+- Numeric sizes are `number` on browser, `bigint` on Node. Byte arrays are `Uint8Array` on browser, `Buffer` on Node (`Buffer` is a `Uint8Array` subclass; both accept either as input).
 
 ## API
 
@@ -72,23 +117,23 @@ for (const obj of await packed.finalize()) await sdk.pinObject(obj)
 | `connect(indexerUrl, appMeta, appKey)` | Reconnect a returning user. |
 | `generateRecoveryPhrase()` | 12-word BIP-39 phrase. |
 | `validateRecoveryPhrase(phrase)` | Throws on invalid. |
-| `setLogger(callback, level)` | Forward SDK logs (callback ignored in browser; use `setLogLevel` there). |
+| `setLogLevel(level)` / `setLogger(callback, level)` | Receive SDK logs. |
 | `encodedSize(size, dataShards, parityShards)` | Encoded size after erasure coding. |
 
 ### `Sdk`
 
-From `connect()`, `Builder.register()`, or `Builder.connected()`.
+Returned from `connect()`, `Builder.register()`, or `Builder.connected()`.
 
 | | |
 |---|---|
 | `appKey()` | The `AppKey` for this session. |
-| `upload(object, stream, options, progressFn?)` | Upload. Takes a `ReadableStream`. |
-| `download(object, options?)` | Returns a `ReadableStream`. |
-| `uploadPacked(options, progressFn?)` | Returns a `PackedUpload` for batching small files. |
-| `object(key)` / `deleteObject(key)` / `pinObject(obj)` | Object CRUD. |
-| `updateObjectMetadata(obj)` | Sync metadata to the indexer. |
-| `shareObject(obj, validUntil)` / `sharedObject(url)` | Create / consume share URLs. |
-| `objectEvents(cursor?, limit)` | Paginated event stream. |
+| `upload(object, stream, options?)` | Upload from a `ReadableStream`. Progress via `options.onShardUploaded`. |
+| `download(object, options?)` | Returns a `ReadableStream`. Progress via `options.onShardDownloaded`. |
+| `uploadPacked(options?)` | `PackedUpload` for batching small files into shared slabs. |
+| `object(key)` / `deleteObject(key)` / `pinObject(object)` | Object CRUD. |
+| `updateObjectMetadata(object)` | Push local metadata changes to the indexer. |
+| `shareObject(object, validUntil)` / `sharedObject(url)` | Create / consume share URLs. |
+| `objectEvents(cursor?, limit)` | Paginated change feed. |
 | `hosts()` / `slab(id)` / `account()` / `pruneSlabs()` | Indexer reads. |
 
 ### `Builder`
@@ -100,14 +145,14 @@ From `connect()`, `Builder.register()`, or `Builder.connected()`.
 | `requestConnection()` | Start the approval flow. |
 | `responseUrl()` | URL to show the user. |
 | `waitForApproval()` | Resolves once the user approves. |
-| `register(phrase)` | Finish with a new recovery phrase → `Sdk`. |
+| `register(phrase)` | Finish onboarding with a new recovery phrase → `Sdk`. |
 | `connected(appKey)` | Reconnect with a saved `AppKey` → `Sdk \| null`. |
 
 ### `AppKey`
 
-`new AppKey(seed: Uint8Array)` — 32-byte seed.
+`new AppKey(seed)` — 32-byte `Uint8Array`.
 
-`publicKey()` · `sign(msg)` · `verifySignature(msg, sig)` · `export()`
+`publicKey()` · `sign(message)` · `verifySignature(message, signature)` · `export()`
 
 ### `PinnedObject`
 
@@ -120,17 +165,6 @@ From `connect()`, `Builder.register()`, or `Builder.connected()`.
 From `sdk.uploadPacked()`.
 
 `add(stream)` · `finalize()` · `cancel()` · `remaining()` · `length()` · `slabs()`
-
-## Node vs browser — small differences
-
-Re-exports the Sia SDK's native-NAPI bindings in Node/Bun and its WASM bindings in the browser. Near-identical surfaces; a few places they diverge:
-
-- **App metadata:** Node uses `{ id: Buffer(32), ... }`; browser uses `{ appId: string (hex), ... }`. Browser can't use fixed-size Buffers.
-- **`sdk.upload` args:** Node takes `(object, stream, options, progressFn?)`; browser takes `(source, object, options)` with progress via `options.onProgress`.
-- **`sdk.uploadPacked`:** returns a Promise on Node, returns the handle synchronously on browser.
-- **Logging:** Node accepts a callback via `setLogger(cb, level)`; browser only has `setLogLevel(level)` — log messages go to `console.log`.
-
-Byte arrays and numeric types also differ — Node returns `Buffer` and `bigint` for sizes, browser returns `Uint8Array` and `number`. These are upstream binding differences, not this package. Several of them ([#334](https://github.com/SiaFoundation/sia-sdk-rs/pull/334)) are being resolved upstream.
 
 ## License
 
