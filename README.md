@@ -37,13 +37,10 @@ const appKeyHex = sdk.appKey().export().toHex()
 Reconnecting a returning user:
 
 ```ts
-import { connect, AppKey } from 'sia-storage'
+import { Builder, AppKey } from 'sia-storage'
 
-const sdk = await connect(
-  'https://sia.storage',
-  appMeta,
-  new AppKey(Uint8Array.fromHex(appKeyHex)),
-)
+const sdk = await new Builder('https://sia.storage', appMeta)
+  .connected(new AppKey(Uint8Array.fromHex(appKeyHex)))
 ```
 
 ## Uploading
@@ -114,7 +111,6 @@ Near-identical surfaces. Real differences:
 | | |
 |---|---|
 | `initSia()` | Initialize. Call once before using the SDK. |
-| `connect(indexerUrl, appMeta, appKey)` | Reconnect a returning user. |
 | `generateRecoveryPhrase()` | 12-word BIP-39 phrase. |
 | `validateRecoveryPhrase(phrase)` | Throws on invalid. |
 | `setLogLevel(level)` / `setLogger(callback, level)` | Receive SDK logs. |
@@ -122,7 +118,7 @@ Near-identical surfaces. Real differences:
 
 ### `Sdk`
 
-Returned from `connect()`, `Builder.register()`, or `Builder.connected()`.
+Returned from `Builder.register()` or `Builder.connected()`.
 
 | | |
 |---|---|

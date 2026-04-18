@@ -4,17 +4,18 @@
     "": {
       "name": "@siafoundation/sia",
       "devDependencies": {
+        "@types/bun": "^1.3.12",
         "@types/node": "^25.3.5",
         "playwright": "^1.58.2",
         "tsup": "^8.4.0",
         "typescript": "~5.9.3",
       },
       "optionalDependencies": {
-        "@siafoundation/sia-darwin-arm64": "0.6.3",
-        "@siafoundation/sia-darwin-x64": "0.6.3",
-        "@siafoundation/sia-linux-arm64-gnu": "0.6.3",
-        "@siafoundation/sia-linux-x64-gnu": "0.6.3",
-        "@siafoundation/sia-win32-x64-msvc": "0.6.3",
+        "sia-storage-darwin-arm64": "0.0.7",
+        "sia-storage-darwin-x64": "0.0.7",
+        "sia-storage-linux-arm64-gnu": "0.0.7",
+        "sia-storage-linux-x64-gnu": "0.0.7",
+        "sia-storage-win32-x64-msvc": "0.0.7",
       },
     },
   },
@@ -129,7 +130,7 @@
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.59.0", "", { "os": "win32", "cpu": "x64" }, "sha512-2HRCml6OztYXyJXAvdDXPKcawukWY2GpR5/nxKp4iBgiO3wcoEGkAaqctIbZcNB6KlUQBIqt8VYkNSj2397EfA=="],
 
-    "@siafoundation/sia-darwin-arm64": ["@siafoundation/sia-darwin-arm64@0.6.3", "", { "os": "darwin", "cpu": "arm64" }, "sha512-UYZGU6hia0EvNfduDOFJYjIDFtqN8LhKlBd3COQizmwAJ2qdY1FLFt+YOGXmPlBPpKKSgXc8fEfnWezU/dMkag=="],
+    "@types/bun": ["@types/bun@1.3.12", "", { "dependencies": { "bun-types": "1.3.12" } }, "sha512-DBv81elK+/VSwXHDlnH3Qduw+KxkTIWi7TXkAeh24zpi5l0B2kUg9Ga3tb4nJaPcOFswflgi/yAvMVBPrxMB+A=="],
 
     "@types/estree": ["@types/estree@1.0.8", "", {}, "sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w=="],
 
@@ -138,6 +139,8 @@
     "acorn": ["acorn@8.16.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 
     "any-promise": ["any-promise@1.3.0", "", {}, "sha512-7UvmKalWRt1wgjL1RrGxoSJW/0QZFIegpeGvZG9kjp8vrRu55XTHbwnqq2GpXm9uLbcuhxm3IqX9OB4MZR1b2A=="],
+
+    "bun-types": ["bun-types@1.3.12", "", { "dependencies": { "@types/node": "*" } }, "sha512-HqOLj5PoFajAQciOMRiIZGNoKxDJSr6qigAttOX40vJuSp6DN/CxWp9s3C1Xwm4oH7ybueITwiaOcWXoYVoRkA=="],
 
     "bundle-require": ["bundle-require@5.1.0", "", { "dependencies": { "load-tsconfig": "^0.2.3" }, "peerDependencies": { "esbuild": ">=0.18" } }, "sha512-3WrrOuZiyaaZPWiEt4G3+IffISVC9HYlWueJEBWED4ZH4aIAC2PnkdnuRrR94M+w6yGWn4AglWtJtBI8YqvgoA=="],
 
@@ -200,6 +203,16 @@
     "resolve-from": ["resolve-from@5.0.0", "", {}, "sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw=="],
 
     "rollup": ["rollup@4.59.0", "", { "dependencies": { "@types/estree": "1.0.8" }, "optionalDependencies": { "@rollup/rollup-android-arm-eabi": "4.59.0", "@rollup/rollup-android-arm64": "4.59.0", "@rollup/rollup-darwin-arm64": "4.59.0", "@rollup/rollup-darwin-x64": "4.59.0", "@rollup/rollup-freebsd-arm64": "4.59.0", "@rollup/rollup-freebsd-x64": "4.59.0", "@rollup/rollup-linux-arm-gnueabihf": "4.59.0", "@rollup/rollup-linux-arm-musleabihf": "4.59.0", "@rollup/rollup-linux-arm64-gnu": "4.59.0", "@rollup/rollup-linux-arm64-musl": "4.59.0", "@rollup/rollup-linux-loong64-gnu": "4.59.0", "@rollup/rollup-linux-loong64-musl": "4.59.0", "@rollup/rollup-linux-ppc64-gnu": "4.59.0", "@rollup/rollup-linux-ppc64-musl": "4.59.0", "@rollup/rollup-linux-riscv64-gnu": "4.59.0", "@rollup/rollup-linux-riscv64-musl": "4.59.0", "@rollup/rollup-linux-s390x-gnu": "4.59.0", "@rollup/rollup-linux-x64-gnu": "4.59.0", "@rollup/rollup-linux-x64-musl": "4.59.0", "@rollup/rollup-openbsd-x64": "4.59.0", "@rollup/rollup-openharmony-arm64": "4.59.0", "@rollup/rollup-win32-arm64-msvc": "4.59.0", "@rollup/rollup-win32-ia32-msvc": "4.59.0", "@rollup/rollup-win32-x64-gnu": "4.59.0", "@rollup/rollup-win32-x64-msvc": "4.59.0", "fsevents": "~2.3.2" }, "bin": { "rollup": "dist/bin/rollup" } }, "sha512-2oMpl67a3zCH9H79LeMcbDhXW/UmWG/y2zuqnF2jQq5uq9TbM9TVyXvA4+t+ne2IIkBdrLpAaRQAvo7YI/Yyeg=="],
+
+    "sia-storage-darwin-arm64": ["sia-storage-darwin-arm64@0.0.7", "", { "os": "darwin", "cpu": "arm64" }, "sha512-wQL2QVJefzJB0Chg98s/PGlSP6Kb15JIloKjs49nQeDa36saeNWHtfveeV9d/E6HkP879EPObvzH/ClyF4Mzrg=="],
+
+    "sia-storage-darwin-x64": ["sia-storage-darwin-x64@0.0.7", "", { "os": "darwin", "cpu": "x64" }, "sha512-3hrW2GOdfC4ifxjSDyNOLoAgMViTMrl8d0CotQNocim1B7FTfxnjn4xTJosM0zS+ibH9h8it8f0ksXeXDA6p3g=="],
+
+    "sia-storage-linux-arm64-gnu": ["sia-storage-linux-arm64-gnu@0.0.7", "", { "os": "linux", "cpu": "arm64" }, "sha512-08AaOmUXkWxGXBhe9wEWLeW9mOiUn8QtH+7BEKi9WxJ5cd0WuYcLcQh8I1RoKMRR4LlO+nTEs+jg/O//X/PICw=="],
+
+    "sia-storage-linux-x64-gnu": ["sia-storage-linux-x64-gnu@0.0.7", "", { "os": "linux", "cpu": "x64" }, "sha512-GT2uxo7RKq6MLIMUMCqoKvnvyUlkYZVq4dIXCq07PDhc9dPjUAamnW8fsBW2zn/UHNCABLgghhcE8m9aISSnxA=="],
+
+    "sia-storage-win32-x64-msvc": ["sia-storage-win32-x64-msvc@0.0.7", "", { "os": "win32", "cpu": "x64" }, "sha512-pITSHuO4/E/Kc5OcKc6sQ9flC2jTxs5dy4zDjoyZP4Q63J9+YBdiMZquDJPLW3YusiAMnVb47Rajd7yqOqzx7w=="],
 
     "source-map": ["source-map@0.7.6", "", {}, "sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ=="],
 

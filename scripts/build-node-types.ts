@@ -21,11 +21,7 @@ content = content.replace(
 )
 
 content += `
-/** Initialize the SDK. Loads the native addon eagerly so missing-binary errors surface immediately. */
 export declare function initSia(): Promise<void>
-
-/** Reconnect a returning user with a stored AppKey. */
-export declare function connect(indexerUrl: string, appMeta: AppMetadata, appKey: AppKey): Promise<Sdk | null>
 `
 
 writeFileSync(OUT, content)
