@@ -1,0 +1,61 @@
+name: Prepare release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-release:
+    # Skip on the merge commit from a release PR so we don't loop.
+    if: |
+      !contains(github.event.head_commit.message, 'chore: prepare release')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Setup Knope
+        uses: knope-dev/action@v2.1.2
+
+      - name: Run Knope prepare-release
+        run: knope prepare-release --verbose
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync optionalDependencies to new version
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf-8'));
+            if (pkg.optionalDependencies) {
+              for (const key of Object.keys(pkg.optionalDependencies)) {
+                pkg.optionalDependencies[key] = pkg.version;
+              }
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            }
+          "
+
+      - name: Build PR body from new CHANGELOG section
+        id: body
+        run: |
+          # Extract just the new section knope prepended to CHANGELOG.md.
+          body=$(git diff CHANGELOG.md | grep '^+' | grep -v '^+++' | sed 's/^+//')
+          echo "value<<PRBODY" >> "$GITHUB_OUTPUT"
+          echo "$body" >> "$GITHUB_OUTPUT"
+          echo "PRBODY" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: release
+          base: main
+          title: 'chore: prepare release'
+          commit-message: 'chore: prepare release'
+          body: ${{ steps.body.outputs.value }}
