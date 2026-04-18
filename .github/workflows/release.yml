@@ -133,6 +133,9 @@ jobs:
   publish:
     needs: [build-napi, build-wasm, test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v5
 
@@ -158,6 +161,4 @@ jobs:
       - run: bun install && bun run build
 
       - name: Publish to npm
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bun run scripts/publish.ts --ci
