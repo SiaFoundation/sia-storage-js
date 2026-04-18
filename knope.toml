@@ -1,0 +1,52 @@
+[package]
+versioned_files = ["package.json"]
+changelog = "CHANGELOG.md"
+
+[[workflows]]
+name = "document-change"
+[[workflows.steps]]
+type = "CreateChangeFile"
+
+# Recommended preview-release-PR pattern from
+# https://knope.tech/recipes/1-preview-releases-with-pull-requests/
+[[workflows]]
+name = "prepare-release"
+
+[[workflows.steps]]
+type = "Command"
+command = "git switch -c release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+# Mirror the new package.json version into optionalDependencies.sia-storage-*.
+[[workflows.steps]]
+type = "Command"
+command = "bun run scripts/sync-versions.ts"
+
+[[workflows.steps]]
+type = "Command"
+command = "git commit -am 'chore: prepare release $version'"
+
+[[workflows.steps]]
+type = "Command"
+command = "git push --force --set-upstream origin release"
+
+[[workflows.steps]]
+type = "CreatePullRequest"
+base = "main"
+
+[workflows.steps.title]
+template = "chore: prepare release $version"
+
+[workflows.steps.body]
+template = "$changelog"
+
+[[workflows]]
+name = "release"
+[[workflows.steps]]
+type = "Release"
+
+[github]
+owner = "SiaFoundation"
+repo = "sia-storage-js"
