@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-napi:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            suffix: darwin-arm64
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            suffix: darwin-x64
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            suffix: linux-x64-gnu
+            flags: "--use-napi-cross"
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            suffix: linux-arm64-gnu
+            flags: "--use-napi-cross"
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            suffix: win32-x64-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/
+          key: cargo-registry-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ matrix.target }}-
+
+      - name: Clone Rust SDK
+        # Pinned to alex/napi-typedef until merged; revert to master after.
+        run: git clone --branch alex/napi-typedef --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - name: Build NAPI binary
+        working-directory: rust/sia-sdk-rs/sia_storage_napi
+        env:
+          # ring's ARM assembly needs __ARM_ARCH defined for napi-cross's GCC.
+          CFLAGS_aarch64_unknown_linux_gnu: -march=armv8-a -D__ARM_ARCH=8
+        run: bunx @napi-rs/cli build --release --platform --dts index.d.ts --target ${{ matrix.target }} ${{ matrix.flags }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: napi-${{ matrix.suffix }}
+          path: |
+            rust/sia-sdk-rs/sia_storage_napi/sia-storage.*.node
+            rust/sia-sdk-rs/sia_storage_napi/index.d.ts
+
+  build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Clone Rust SDK
+        # Pinned to alex/napi-typedef until merged; revert to master after.
+        run: git clone --branch alex/napi-typedef --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - run: bun run build-wasm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: wasm/sia_storage_wasm*
+
+  test:
+    needs: [build-napi, build-wasm]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm
+          path: wasm/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: napi-darwin-arm64
+          path: artifacts/napi-darwin-arm64/
+
+      - name: Stage NAPI binary + types
+        run: |
+          mkdir -p node_modules/sia-storage-darwin-arm64
+          cp artifacts/napi-darwin-arm64/sia-storage.darwin-arm64.node node_modules/sia-storage-darwin-arm64/sia-storage.node
+          echo '{"name":"sia-storage-darwin-arm64","main":"sia-storage.node"}' > node_modules/sia-storage-darwin-arm64/package.json
+          cp artifacts/napi-darwin-arm64/index.d.ts src/node/napi.generated.d.ts
+
+      - run: bun install && bun run build
+
+      - run: bunx playwright install chromium --with-deps
+
+      - run: bun run test:all
+
+  publish:
+    needs: [build-napi, build-wasm, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm
+          path: wasm/
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Stage NAPI types for build
+        run: cp artifacts/napi-darwin-arm64/index.d.ts src/node/napi.generated.d.ts
+
+      - run: bun install && bun run build
+
+      - name: Publish to npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun run scripts/publish.ts --ci

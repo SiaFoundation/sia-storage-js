@@ -1,0 +1,23 @@
+name: Knope Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  release:
+    if: github.head_ref == 'release' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: knope-dev/action@v2.1.2
+        with:
+          version: 0.22.2
+
+      - run: knope release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
