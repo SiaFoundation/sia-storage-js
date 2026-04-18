@@ -1,0 +1,207 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+
+jobs:
+  build-napi:
+    # Skip closed PRs that weren't merged — no point building then.
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.action != 'closed' ||
+      github.event.pull_request.merged == true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            suffix: darwin-arm64
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            suffix: darwin-x64
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            suffix: linux-x64-gnu
+            flags: "--use-napi-cross"
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            suffix: linux-arm64-gnu
+            flags: "--use-napi-cross"
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            suffix: win32-x64-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/
+          key: cargo-registry-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ matrix.target }}-
+
+      - name: Clone Rust SDK
+        # Pinned to alex/napi-typedef until merged; revert to master after.
+        run: git clone --branch alex/napi-typedef --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - name: Build NAPI binary
+        working-directory: rust/sia-sdk-rs/sia_storage_napi
+        env:
+          # ring's ARM assembly needs __ARM_ARCH defined. napi-cross's GCC
+          # toolchain doesn't auto-define it from -march, so set both
+          # explicitly. Ignored by non-aarch64 targets.
+          CFLAGS_aarch64_unknown_linux_gnu: -march=armv8-a -D__ARM_ARCH=8
+        run: bunx @napi-rs/cli build --release --platform --dts index.d.ts --target ${{ matrix.target }} ${{ matrix.flags }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: napi-${{ matrix.suffix }}
+          path: |
+            rust/sia-sdk-rs/sia_storage_napi/sia-storage.*.node
+            rust/sia-sdk-rs/sia_storage_napi/index.d.ts
+
+  build-wasm:
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.action != 'closed' ||
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Clone Rust SDK
+        # Pinned to alex/napi-typedef until merged; revert to master after.
+        run: git clone --branch alex/napi-typedef --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - name: Build WASM
+        run: bun run build-wasm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: wasm/sia_storage_wasm*
+
+  test:
+    needs: [build-napi, build-wasm]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download wasm artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm
+          path: wasm/
+
+      - name: Download darwin-arm64 NAPI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: napi-darwin-arm64
+          path: artifacts/napi-darwin-arm64/
+
+      - name: Stage NAPI binary + types
+        run: |
+          mkdir -p node_modules/sia-storage-darwin-arm64
+          cp artifacts/napi-darwin-arm64/sia-storage.darwin-arm64.node node_modules/sia-storage-darwin-arm64/sia-storage.node
+          echo '{"name":"sia-storage-darwin-arm64","main":"sia-storage.node"}' > node_modules/sia-storage-darwin-arm64/package.json
+          cp artifacts/napi-darwin-arm64/index.d.ts src/node/napi.generated.d.ts
+
+      - name: Install and build
+        run: bun install && bun run build
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install chromium --with-deps
+
+      - name: Run tests (Node install integration + browser integration)
+        run: bun run test:all
+
+  publish:
+    needs: [build-napi, build-wasm, test]
+    # Only publish on two triggers:
+    #   1. Manual workflow_dispatch.
+    #   2. The Knope release PR from the `release` branch being merged into main.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'closed' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.head.ref == 'release')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `knope release` can find the changelog entry.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Download wasm artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm
+          path: wasm/
+
+      - name: Download all NAPI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Stage NAPI types for build
+        # The .d.ts is identical across platforms; pick any one.
+        run: cp artifacts/napi-darwin-arm64/index.d.ts src/node/napi.generated.d.ts
+
+      - name: Install and build
+        run: bun install && bun run build
+
+      - name: Publish (platform packages + main)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun run scripts/publish.ts --ci
+
+      - name: Setup Knope
+        uses: knope-dev/action@v2.1.2
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: knope release

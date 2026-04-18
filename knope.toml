@@ -1,0 +1,22 @@
+[package]
+versioned_files = ["package.json"]
+changelog = "CHANGELOG.md"
+
+[[workflows]]
+name = "document-change"
+[[workflows.steps]]
+type = "CreateChangeFile"
+
+[[workflows]]
+name = "prepare-release"
+[[workflows.steps]]
+type = "PrepareRelease"
+
+[[workflows]]
+name = "release"
+[[workflows.steps]]
+type = "Release"
+
+[github]
+owner = "SiaFoundation"
+repo = "sia-storage-js"
