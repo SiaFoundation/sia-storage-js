@@ -1,6 +1,6 @@
 {
   "name": "sia-storage",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -35,11 +35,11 @@
     "publish-npm": "bun run scripts/publish.ts"
   },
   "optionalDependencies": {
-    "sia-storage-darwin-arm64": "0.0.6",
-    "sia-storage-darwin-x64": "0.0.6",
-    "sia-storage-linux-x64-gnu": "0.0.6",
-    "sia-storage-linux-arm64-gnu": "0.0.6",
-    "sia-storage-win32-x64-msvc": "0.0.6"
+    "sia-storage-darwin-arm64": "0.0.7",
+    "sia-storage-darwin-x64": "0.0.7",
+    "sia-storage-linux-x64-gnu": "0.0.7",
+    "sia-storage-linux-arm64-gnu": "0.0.7",
+    "sia-storage-win32-x64-msvc": "0.0.7"
   },
   "devDependencies": {
     "@types/node": "^25.3.5",
