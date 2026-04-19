@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Publish sia-storage and the 5 platform-specific NAPI packages to npm.
-// Auth via OIDC trusted publisher (no token); attaches build provenance.
+// Auth via OIDC trusted publisher (no token).
+// TODO: add `--provenance` once the repo is public (sigstore requires it).
 //
 //   bun run publish-npm           # local: build + test + publish
 //   bun run publish-npm -- --ci   # CI: skip build/test (already done)
@@ -87,7 +88,7 @@ try {
     if (dryRun) {
       console.log(`  DRY RUN: would publish from ${tmpDir}`)
     } else {
-      const result = await $`npm publish --access public --provenance`
+      const result = await $`npm publish --access public`
         .cwd(tmpDir)
         .nothrow()
       if (result.exitCode !== 0) {
@@ -111,7 +112,7 @@ try {
   if (dryRun) {
     console.log('DRY RUN: would publish main package')
   } else {
-    await $`npm publish --access public --provenance --ignore-scripts`.cwd(ROOT)
+    await $`npm publish --access public --ignore-scripts`.cwd(ROOT)
     console.log('✓ Published')
   }
 
