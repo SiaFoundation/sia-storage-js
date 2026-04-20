@@ -6,7 +6,7 @@ import {
   generateRecoveryPhrase,
   initSia,
   validateRecoveryPhrase,
-} from 'sia-storage'
+} from '@siafoundation/sia-storage'
 
 declare global {
   interface Window {

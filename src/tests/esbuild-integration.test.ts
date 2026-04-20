@@ -39,7 +39,7 @@ describe('esbuild bundler integration', () => {
 
     // esbuild doesn't emit .wasm assets; copy manually like real-world setups.
     cpSync(
-      join(tmpDir, 'node_modules/sia-storage/wasm/sia_storage_wasm_bg.wasm'),
+      join(tmpDir, 'node_modules/@siafoundation/sia-storage/wasm/sia_storage_wasm_bg.wasm'),
       join(distDir, 'sia_storage_wasm_bg.wasm'),
     )
 

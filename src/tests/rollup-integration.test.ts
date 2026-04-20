@@ -41,7 +41,7 @@ describe('rollup bundler integration', () => {
     copyFixtures(fixtureDir, distDir, ['index.html'])
     // Copy .wasm manually for parity with esbuild test (alternative: @rollup/plugin-url).
     cpSync(
-      join(tmpDir, 'node_modules/sia-storage/wasm/sia_storage_wasm_bg.wasm'),
+      join(tmpDir, 'node_modules/@siafoundation/sia-storage/wasm/sia_storage_wasm_bg.wasm'),
       join(distDir, 'sia_storage_wasm_bg.wasm'),
     )
 

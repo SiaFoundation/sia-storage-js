@@ -51,6 +51,7 @@ describe('installed tarball', () => {
     const binarySource = join(
       ROOT,
       'node_modules',
+      '@siafoundation',
       `sia-storage-${suffix}`,
       'sia-storage.node',
     )
@@ -59,13 +60,18 @@ describe('installed tarball', () => {
         `NAPI binary not found at ${binarySource}. Run "bun run setup-napi-test" first.`,
       )
     }
-    const targetDir = join(tmpDir, 'node_modules', `sia-storage-${suffix}`)
+    const targetDir = join(
+      tmpDir,
+      'node_modules',
+      '@siafoundation',
+      `sia-storage-${suffix}`,
+    )
     mkdirSync(targetDir, { recursive: true })
     cpSync(binarySource, join(targetDir, 'sia-storage.node'))
     writeFileSync(
       join(targetDir, 'package.json'),
       JSON.stringify({
-        name: `sia-storage-${suffix}`,
+        name: `@siafoundation/sia-storage-${suffix}`,
         version: PKG_VERSION,
         main: 'sia-storage.node',
       }),

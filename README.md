@@ -5,13 +5,13 @@ TypeScript SDK for building decentralized storage apps on the [Sia](https://sia.
 ## Install
 
 ```bash
-npm install sia-storage
+npm install @siafoundation/sia-storage
 ```
 
 ## Quick start
 
 ```ts
-import { initSia, Builder, generateRecoveryPhrase } from 'sia-storage'
+import { initSia, Builder, generateRecoveryPhrase } from '@siafoundation/sia-storage'
 
 await initSia()
 
@@ -37,7 +37,7 @@ const appKeyHex = sdk.appKey().export().toHex()
 Reconnecting a returning user:
 
 ```ts
-import { Builder, AppKey } from 'sia-storage'
+import { Builder, AppKey } from '@siafoundation/sia-storage'
 
 const sdk = await new Builder('https://sia.storage', appMeta)
   .connected(new AppKey(Uint8Array.fromHex(appKeyHex)))
@@ -46,7 +46,7 @@ const sdk = await new Builder('https://sia.storage', appMeta)
 ## Uploading
 
 ```ts
-import { PinnedObject } from 'sia-storage'
+import { PinnedObject } from '@siafoundation/sia-storage'
 
 const object = await sdk.upload(new PinnedObject(), file.stream(), { maxInflight: 10 })
 await sdk.pinObject(object)
@@ -72,7 +72,16 @@ for (const obj of await packed.finalize()) await sdk.pinObject(obj)
 
 The browser build is WebAssembly — most bundlers handle it directly, a few need a small hint.
 
-**Vite**: works as-is.
+**Vite** — production builds work as-is. For `vite dev`, exclude the package from the dep pre-bundler so its `import.meta.url`-relative WASM path resolves correctly:
+
+```js
+// vite.config.js
+export default defineConfig({
+  optimizeDeps: { exclude: ['@siafoundation/sia-storage'] },
+})
+```
+
+Without this, the dev server fetches the `.wasm` from `/node_modules/.vite/deps/` where it doesn't exist, the SPA fallback returns `index.html`, and `WebAssembly.instantiate` fails with a `magic word … found 3c 21 64 6f` error.
 
 **Next.js (App Router)** — load from a Client Component, dynamically imported so the WebAssembly module isn't pulled into the server prerender:
 
@@ -93,7 +102,7 @@ module.exports = { experiments: { asyncWebAssembly: true, topLevelAwait: true } 
 **Rollup / esbuild** — copy the WebAssembly asset into your output directory:
 
 ```bash
-cp node_modules/sia-storage/wasm/sia_storage_wasm_bg.wasm dist/
+cp node_modules/@siafoundation/sia-storage/wasm/sia_storage_wasm_bg.wasm dist/
 ```
 
 ## Node vs browser

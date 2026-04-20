@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Publish sia-storage and the 5 platform-specific NAPI packages to npm.
+// Publish @siafoundation/sia-storage and the 5 platform-specific NAPI packages to npm.
 // Auth via OIDC trusted publisher (no token).
 // TODO: add `--provenance` once the repo is public (sigstore requires it).
 //
@@ -27,7 +27,9 @@ const ci = process.argv.includes('--ci')
 
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'))
 const version = pkg.version
-console.log(`Publishing sia-storage@${version}${dryRun ? ' (dry run)' : ''}`)
+console.log(
+  `Publishing @siafoundation/sia-storage@${version}${dryRun ? ' (dry run)' : ''}`,
+)
 
 const PLATFORMS: Record<string, { os: string; cpu: string; file: string }> = {
   'darwin-arm64': { os: 'darwin', cpu: 'arm64', file: 'sia-storage.darwin-arm64.node' },
@@ -57,7 +59,7 @@ try {
   for (const [suffix, info] of Object.entries(PLATFORMS)) {
     const binaryPath = findBinary(info, suffix)
     if (!binaryPath) {
-      console.log(`  SKIP sia-storage-${suffix} (no binary found)`)
+      console.log(`  SKIP @siafoundation/sia-storage-${suffix} (no binary found)`)
       continue
     }
 
@@ -65,14 +67,14 @@ try {
     mkdirSync(tmpDir, { recursive: true })
 
     const platformPkg = {
-      name: `sia-storage-${suffix}`,
+      name: `@siafoundation/sia-storage-${suffix}`,
       version,
       os: [info.os],
       cpu: [info.cpu],
       main: 'sia-storage.node',
       files: ['sia-storage.node'],
       license: 'MIT',
-      description: `Native NAPI addon for sia-storage (${suffix})`,
+      description: `Native NAPI addon for @siafoundation/sia-storage (${suffix})`,
       repository: {
         type: 'git',
         url: 'https://github.com/SiaFoundation/sia-storage-js',
@@ -84,7 +86,7 @@ try {
     )
     cpSync(binaryPath, join(tmpDir, 'sia-storage.node'))
 
-    console.log(`  Publishing sia-storage-${suffix}@${version}...`)
+    console.log(`  Publishing @siafoundation/sia-storage-${suffix}@${version}...`)
     if (dryRun) {
       console.log(`  DRY RUN: would publish from ${tmpDir}`)
     } else {
@@ -108,7 +110,7 @@ try {
     }
   }
 
-  console.log(`\n── Publishing sia-storage@${version} ──`)
+  console.log(`\n── Publishing @siafoundation/sia-storage@${version} ──`)
   if (dryRun) {
     console.log('DRY RUN: would publish main package')
   } else {

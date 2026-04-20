@@ -119,9 +119,9 @@ jobs:
 
       - name: Stage NAPI binary + types
         run: |
-          mkdir -p node_modules/sia-storage-darwin-arm64
-          cp artifacts/napi-darwin-arm64/sia-storage.darwin-arm64.node node_modules/sia-storage-darwin-arm64/sia-storage.node
-          echo '{"name":"sia-storage-darwin-arm64","main":"sia-storage.node"}' > node_modules/sia-storage-darwin-arm64/package.json
+          mkdir -p node_modules/@siafoundation/sia-storage-darwin-arm64
+          cp artifacts/napi-darwin-arm64/sia-storage.darwin-arm64.node node_modules/@siafoundation/sia-storage-darwin-arm64/sia-storage.node
+          echo '{"name":"@siafoundation/sia-storage-darwin-arm64","main":"sia-storage.node"}' > node_modules/@siafoundation/sia-storage-darwin-arm64/package.json
           cp artifacts/napi-darwin-arm64/index.d.ts src/node/napi.generated.d.ts
 
       - run: bun install && bun run build

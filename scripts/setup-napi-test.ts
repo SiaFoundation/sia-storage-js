@@ -17,7 +17,7 @@ let suffix = `${platform}-${arch}`
 if (platform === 'linux') suffix = `${platform}-${arch}-gnu`
 else if (platform === 'win32') suffix = `${platform}-${arch}-msvc`
 
-const pkgName = `sia-storage-${suffix}`
+const pkgName = `@siafoundation/sia-storage-${suffix}`
 const pkgDir = join(ROOT, 'node_modules', pkgName)
 const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'))
   .version

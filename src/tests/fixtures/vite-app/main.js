@@ -7,7 +7,7 @@ import {
   generateRecoveryPhrase,
   initSia,
   validateRecoveryPhrase,
-} from 'sia-storage'
+} from '@siafoundation/sia-storage'
 
 try {
   await initSia()
