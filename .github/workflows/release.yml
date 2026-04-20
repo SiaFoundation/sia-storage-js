@@ -53,8 +53,7 @@ jobs:
           restore-keys: cargo-registry-${{ matrix.target }}-
 
       - name: Clone Rust SDK
-        # Pinned to alex/napi-typedef until merged; revert to master after.
-        run: git clone --branch alex/napi-typedef --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - name: Build NAPI binary
         working-directory: rust/sia-sdk-rs/sia_storage_napi
@@ -85,8 +84,7 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Clone Rust SDK
-        # Pinned to alex/napi-typedef until merged; revert to master after.
-        run: git clone --branch alex/napi-typedef --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - run: bun run build-wasm
 

@@ -6,9 +6,8 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const targetDir = resolve(__dirname, '../rust/sia-sdk-rs')
 
-// Pinned to alex/napi-typedef; switch to master after merge.
 export const SIA_SDK_RS_REPO = 'https://github.com/SiaFoundation/sia-sdk-rs.git'
-export const SIA_SDK_RS_BRANCH = 'alex/napi-typedef'
+export const SIA_SDK_RS_BRANCH = 'master'
 
 if (existsSync(targetDir)) {
   console.log('rust/sia-sdk-rs already exists, skipping clone.')
