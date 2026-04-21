@@ -1,6 +1,6 @@
 // Browser entry; lazily initializes WASM on first use.
 
-import wasmInit, { setLogLevel } from '../wasm/sia_storage_wasm.js'
+import wasmInit from '../wasm/sia_storage_wasm.js'
 
 let initPromise: Promise<unknown> | null = null
 
@@ -19,7 +19,7 @@ export {
   Sdk,
   encodedSize,
   generateRecoveryPhrase,
-  setLogLevel,
+  setLogger,
   validateRecoveryPhrase,
 } from '../wasm/sia_storage_wasm.js'
 export type {
@@ -35,11 +35,3 @@ export type {
   Slab,
   UploadOptions,
 } from '../wasm/sia_storage_wasm.js'
-
-// Browser has no logger callback; forward the level to the console logger.
-export function setLogger(
-  _callback: (message: string) => void,
-  level: string,
-): void {
-  setLogLevel(level)
-}

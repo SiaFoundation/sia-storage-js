@@ -110,7 +110,6 @@ cp node_modules/@siafoundation/sia-storage/wasm/sia_storage_wasm_bg.wasm dist/
 Near-identical surfaces. Real differences:
 
 - App identifier: `appMeta.appId: string (hex)` on browser, `appMeta.id: Buffer(32)` on Node.
-- Logging: browser has `setLogLevel(level)` only — logs go to `console`. Node has `setLogger(callback, level)` with a callback.
 - Numeric sizes are `number` on browser, `bigint` on Node. Byte arrays are `Uint8Array` on browser, `Buffer` on Node (`Buffer` is a `Uint8Array` subclass; both accept either as input).
 
 ## API
@@ -122,7 +121,7 @@ Near-identical surfaces. Real differences:
 | `initSia()` | Initialize. Call once before using the SDK. |
 | `generateRecoveryPhrase()` | 12-word BIP-39 phrase. |
 | `validateRecoveryPhrase(phrase)` | Throws on invalid. |
-| `setLogLevel(level)` / `setLogger(callback, level)` | Receive SDK logs. |
+| `setLogger(callback, level)` | Receive SDK logs. |
 | `encodedSize(size, dataShards, parityShards)` | Encoded size after erasure coding. |
 
 ### `Sdk`
