@@ -1,4 +1,10 @@
 # Changelog
+## 0.0.9 (2026-04-29)
+
+### Fixes
+
+- Pull in latest Rust SDK
+
 ## 0.0.8 (2026-04-18)
 
 ### Fixes
