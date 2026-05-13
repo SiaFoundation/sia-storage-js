@@ -1,4 +1,10 @@
 # Changelog
+## 0.0.10 (2026-05-13)
+
+### Fixes
+
+- Fix conditional exports so TypeScript declarations match the loaded runtime
+
 ## 0.0.9 (2026-04-29)
 
 ### Fixes
