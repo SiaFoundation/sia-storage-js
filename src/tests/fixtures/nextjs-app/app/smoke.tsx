@@ -5,8 +5,19 @@ import {
   Builder,
   generateRecoveryPhrase,
   initSia,
+  type PackedUpload,
   validateRecoveryPhrase,
 } from '@siafoundation/sia-storage'
+
+// Type-level assertion: under the browser/default condition the package's
+// WASM .d.ts must resolve, so PackedUpload.length() returns `number`, not
+// `bigint`. This function is never called — its body exists only so `next build`
+// runs tsc over it. If the NAPI types ever leak into bundler resolution, the
+// build fails with TS2365.
+function _typeProbe(u: PackedUpload): number {
+  return u.length() + u.remaining() + 1
+}
+void _typeProbe
 
 declare global {
   interface Window {

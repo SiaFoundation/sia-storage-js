@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { execSync } from 'node:child_process'
 import { cpSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -27,10 +28,15 @@ describe('vite dev bundler integration', () => {
     writePackageJson(tmpDir)
 
     const fixtureDir = join(FIXTURES, 'vite-app')
-    copyFixtures(fixtureDir, tmpDir, ['index.html', 'vite.config.js'])
+    copyFixtures(fixtureDir, tmpDir, [
+      'index.html',
+      'vite.config.js',
+      'tsconfig.json',
+      'typecheck.ts',
+    ])
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
 
-    npmInstall(tmpDir, `${tarball} vite`)
+    npmInstall(tmpDir, `${tarball} vite typescript`)
 
     const port = 54173
     devProc = Bun.spawn(['npx', 'vite', '--port', String(port), '--strictPort'], {
@@ -55,6 +61,15 @@ describe('vite dev bundler integration', () => {
   test('Vite dev server runs the SDK end-to-end', () => {
     if (!result.ok) throw new Error(`Vite dev smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  // WASM .d.ts must resolve under the "browser" condition for vite consumers.
+  // tsconfig.json + typecheck.ts are reused from fixtures/vite-app/.
+  test('typecheck: WASM types resolve under the "browser" condition', () => {
+    execSync('npx --no -- tsc --noEmit -p tsconfig.json', {
+      cwd: tmpDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
   })
 })
 

@@ -24,10 +24,15 @@ describe('vite bundler integration', () => {
     writePackageJson(tmpDir)
 
     const fixtureDir = join(FIXTURES, 'vite-app')
-    copyFixtures(fixtureDir, tmpDir, ['index.html', 'vite.config.js'])
+    copyFixtures(fixtureDir, tmpDir, [
+      'index.html',
+      'vite.config.js',
+      'tsconfig.json',
+      'typecheck.ts',
+    ])
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
 
-    npmInstall(tmpDir, `${tarball} vite`)
+    npmInstall(tmpDir, `${tarball} vite typescript`)
     execSync('npx vite build --logLevel error', {
       cwd: tmpDir,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -46,5 +51,14 @@ describe('vite bundler integration', () => {
   test('Vite-built page runs the SDK end-to-end', () => {
     if (!result.ok) throw new Error(`Vite smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  // WASM .d.ts must resolve under the "browser" condition for vite consumers.
+  // tsconfig.json + typecheck.ts are checked in at fixtures/vite-app/.
+  test('typecheck: WASM types resolve under the "browser" condition', () => {
+    execSync('npx --no -- tsc --noEmit -p tsconfig.json', {
+      cwd: tmpDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
   })
 })
