@@ -24,12 +24,16 @@ describe('rollup bundler integration', () => {
     writePackageJson(tmpDir)
 
     const fixtureDir = join(FIXTURES, 'rollup-app')
-    copyFixtures(fixtureDir, tmpDir, ['rollup.config.mjs'])
+    copyFixtures(fixtureDir, tmpDir, [
+      'rollup.config.mjs',
+      'tsconfig.json',
+      'typecheck.ts',
+    ])
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
 
     npmInstall(
       tmpDir,
-      `${tarball} rollup @rollup/plugin-node-resolve @rollup/plugin-commonjs`,
+      `${tarball} rollup @rollup/plugin-node-resolve @rollup/plugin-commonjs typescript`,
     )
     execSync('npx rollup -c rollup.config.mjs', {
       cwd: tmpDir,
@@ -58,5 +62,14 @@ describe('rollup bundler integration', () => {
   test('rollup-built page runs the SDK end-to-end', () => {
     if (!result.ok) throw new Error(`rollup smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  // WASM .d.ts must resolve under the "browser" condition for rollup consumers.
+  // tsconfig.json + typecheck.ts are checked in at fixtures/rollup-app/.
+  test('typecheck: WASM types resolve under the "browser" condition', () => {
+    execSync('npx --no -- tsc --noEmit -p tsconfig.json', {
+      cwd: tmpDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
   })
 })

@@ -25,8 +25,9 @@ describe('esbuild bundler integration', () => {
 
     const fixtureDir = join(FIXTURES, 'esbuild-app')
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
+    copyFixtures(fixtureDir, tmpDir, ['tsconfig.json', 'typecheck.ts'])
 
-    npmInstall(tmpDir, `${tarball} esbuild`)
+    npmInstall(tmpDir, `${tarball} esbuild typescript`)
 
     const distDir = join(tmpDir, 'dist')
     mkdirSync(distDir, { recursive: true })
@@ -56,5 +57,14 @@ describe('esbuild bundler integration', () => {
   test('esbuild-built page runs the SDK end-to-end', () => {
     if (!result.ok) throw new Error(`esbuild smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  // WASM .d.ts must resolve under the "browser" condition for esbuild consumers.
+  // tsconfig.json + typecheck.ts are checked in at fixtures/esbuild-app/.
+  test('typecheck: WASM types resolve under the "browser" condition', () => {
+    execSync('npx --no -- tsc --noEmit -p tsconfig.json', {
+      cwd: tmpDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
   })
 })

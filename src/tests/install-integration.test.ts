@@ -18,7 +18,8 @@ const ROOT = join(import.meta.dir, '..', '..')
 const PKG_VERSION = JSON.parse(
   readFileSync(join(ROOT, 'package.json'), 'utf-8'),
 ).version
-const SMOKE_FIXTURE = join(import.meta.dir, 'fixtures', 'node-smoke.mjs')
+const FIXTURES = join(import.meta.dir, 'fixtures')
+const SMOKE_FIXTURE = join(FIXTURES, 'node-smoke.mjs')
 
 describe('installed tarball', () => {
   let tmpDir: string
@@ -37,7 +38,7 @@ describe('installed tarball', () => {
       join(tmpDir, 'package.json'),
       JSON.stringify({ name: 'test', version: '1.0.0', type: 'module' }),
     )
-    execSync(`npm install ${tarball} --no-optional`, {
+    execSync(`npm install ${tarball} typescript --no-optional`, {
       cwd: tmpDir,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
@@ -109,4 +110,25 @@ describe('installed tarball', () => {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
   })
+
+  // Each fixture exercises a TypeScript resolution mode against the installed
+  // tarball and asserts the package's exports pick the correct .d.ts:
+  //   node-app, bun-app — bundler mode + customConditions, NAPI types
+  //   nodenext-app      — moduleResolution: nodenext (no customConditions),
+  //                       NAPI types via the "node" condition
+  //   default-app       — bundler mode with NO customConditions, falls through
+  //                       to the exports "default" block (WASM types)
+  test.each(['node-app', 'bun-app', 'nodenext-app', 'default-app'])(
+    'typecheck %s',
+    (appName) => {
+      const appDir = join(FIXTURES, appName)
+      const tsconfigName = `tsconfig.${appName.replace('-app', '')}.json`
+      cpSync(join(appDir, 'typecheck.ts'), join(tmpDir, 'typecheck.ts'))
+      cpSync(join(appDir, 'tsconfig.json'), join(tmpDir, tsconfigName))
+      execSync(`npx --no -- tsc --noEmit -p ${tsconfigName}`, {
+        cwd: tmpDir,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    },
+  )
 })

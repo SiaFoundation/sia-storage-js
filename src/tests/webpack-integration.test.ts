@@ -25,10 +25,15 @@ describe('webpack 5 bundler integration', () => {
     writePackageJson(tmpDir, { type: undefined })
 
     const fixtureDir = join(FIXTURES, 'webpack-app')
-    copyFixtures(fixtureDir, tmpDir, ['index.html', 'webpack.config.cjs'])
+    copyFixtures(fixtureDir, tmpDir, [
+      'index.html',
+      'webpack.config.cjs',
+      'tsconfig.json',
+      'typecheck.ts',
+    ])
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
 
-    npmInstall(tmpDir, `${tarball} webpack webpack-cli html-webpack-plugin`)
+    npmInstall(tmpDir, `${tarball} webpack webpack-cli html-webpack-plugin typescript`)
     execSync('npx webpack --config webpack.config.cjs', {
       cwd: tmpDir,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -47,5 +52,14 @@ describe('webpack 5 bundler integration', () => {
   test('webpack-built page runs the SDK end-to-end', () => {
     if (!result.ok) throw new Error(`webpack smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  // WASM .d.ts must resolve under the "browser" condition for webpack consumers.
+  // tsconfig.json + typecheck.ts are checked in at fixtures/webpack-app/.
+  test('typecheck: WASM types resolve under the "browser" condition', () => {
+    execSync('npx --no -- tsc --noEmit -p tsconfig.json', {
+      cwd: tmpDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
   })
 })
