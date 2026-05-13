@@ -34,7 +34,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust/sia-sdk-rs
-          shared-key: ci-aarch64-darwin
+          shared-key: napi-darwin-arm64
 
       - name: Cache bun install
         uses: actions/cache@v4
@@ -47,7 +47,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('bun.lock', '.github/workflows/ci.yml') }}
+          key: npm-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: npm-${{ runner.os }}-
 
       - name: Cache Playwright browsers
