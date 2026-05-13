@@ -14,15 +14,23 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "browser": "./dist/index.js",
-      "bun": "./dist/index.node.cjs",
       "node": {
         "types": "./dist/index.node.d.ts",
         "require": "./dist/index.node.cjs",
         "import": "./dist/index.node.cjs"
       },
-      "default": "./dist/index.js"
+      "bun": {
+        "types": "./dist/index.node.d.ts",
+        "default": "./dist/index.node.cjs"
+      },
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     },
     "./wasm": "./wasm/sia_storage_wasm.js",
     "./wasm/*": "./wasm/*"
