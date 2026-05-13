@@ -24,18 +24,38 @@ jobs:
         with:
           targets: aarch64-apple-darwin, wasm32-unknown-unknown
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry/
-          key: cargo-registry-aarch64-apple-darwin-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: cargo-registry-aarch64-apple-darwin-
-
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Clone Rust SDK
         run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - name: Cache Rust target + registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/sia-sdk-rs
+          shared-key: ci-aarch64-darwin
+
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Cache npm registry (fixture installs)
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('bun.lock', '.github/workflows/ci.yml') }}
+          restore-keys: npm-${{ runner.os }}-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-${{ runner.os }}-
 
       - name: Build NAPI binary
         working-directory: rust/sia-sdk-rs/sia_storage_napi
