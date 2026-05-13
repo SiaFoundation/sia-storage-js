@@ -45,15 +45,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry/
-          key: cargo-registry-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: cargo-registry-${{ matrix.target }}-
-
       - name: Clone Rust SDK
         run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - name: Cache Rust target + registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/sia-sdk-rs
+          shared-key: napi-${{ matrix.suffix }}
 
       - name: Build NAPI binary
         working-directory: rust/sia-sdk-rs/sia_storage_napi
@@ -85,6 +84,12 @@ jobs:
 
       - name: Clone Rust SDK
         run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - name: Cache Rust target + registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/sia-sdk-rs
+          shared-key: wasm
 
       - run: bun run build-wasm
 
@@ -121,6 +126,27 @@ jobs:
           cp artifacts/napi-darwin-arm64/sia-storage.darwin-arm64.node node_modules/@siafoundation/sia-storage-darwin-arm64/sia-storage.node
           echo '{"name":"@siafoundation/sia-storage-darwin-arm64","main":"sia-storage.node"}' > node_modules/@siafoundation/sia-storage-darwin-arm64/package.json
           cp artifacts/napi-darwin-arm64/index.d.ts src/node/napi.generated.d.ts
+
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Cache npm registry (fixture installs)
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: npm-${{ runner.os }}-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-${{ runner.os }}-
 
       - run: bun install && bun run build
 
