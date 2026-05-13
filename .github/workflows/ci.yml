@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/
+          key: cargo-registry-aarch64-apple-darwin-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-aarch64-apple-darwin-
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Clone Rust SDK
+        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+
+      - name: Build NAPI binary
+        working-directory: rust/sia-sdk-rs/sia_storage_napi
+        run: bunx @napi-rs/cli build --release --platform --dts index.d.ts --target aarch64-apple-darwin
+
+      - name: Stage NAPI binary + types
+        run: |
+          mkdir -p node_modules/@siafoundation/sia-storage-darwin-arm64
+          cp rust/sia-sdk-rs/sia_storage_napi/sia-storage.darwin-arm64.node node_modules/@siafoundation/sia-storage-darwin-arm64/sia-storage.node
+          echo '{"name":"@siafoundation/sia-storage-darwin-arm64","main":"sia-storage.node"}' > node_modules/@siafoundation/sia-storage-darwin-arm64/package.json
+          cp rust/sia-sdk-rs/sia_storage_napi/index.d.ts src/node/napi.generated.d.ts
+
+      - name: Build WASM
+        run: bun run build-wasm
+
+      - run: bun install && bun run build
+
+      - run: bunx playwright install chromium --with-deps
+
+      - run: bun run test:all
