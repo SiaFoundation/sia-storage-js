@@ -45,8 +45,17 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Read sia-sdk-rs napi version
+        id: sdk
+        shell: bash
+        # This job clones only the napi crate's tag. build-wasm clones the
+        # wasm tag independently. They produce a coherent npm artifact only
+        # because upstream tags both crates at the same commit (see
+        # check-sdk-update.yml header).
+        run: echo "ref=$(jq -r .napi .sia-sdk-rs.json)" >> "$GITHUB_OUTPUT"
+
       - name: Clone Rust SDK
-        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+        run: git clone --branch "${{ steps.sdk.outputs.ref }}" --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - name: Cache Rust target + registry
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -82,8 +91,15 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
+      - name: Read sia-sdk-rs wasm version
+        id: sdk
+        shell: bash
+        # Independent of build-napi: see that job's comment and
+        # check-sdk-update.yml header for the same-commit assumption.
+        run: echo "ref=$(jq -r .wasm .sia-sdk-rs.json)" >> "$GITHUB_OUTPUT"
+
       - name: Clone Rust SDK
-        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+        run: git clone --branch "${{ steps.sdk.outputs.ref }}" --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - name: Cache Rust target + registry
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1

@@ -27,8 +27,17 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
+      - name: Read sia-sdk-rs version
+        id: sdk
+        shell: bash
+        # CI clones once at the napi tag and builds BOTH napi and wasm from
+        # this single clone. Relies on the upstream invariant that napi and
+        # wasm release tags share a commit (see check-sdk-update.yml header
+        # for the failure mode if that ever changes).
+        run: echo "ref=$(jq -r .napi .sia-sdk-rs.json)" >> "$GITHUB_OUTPUT"
+
       - name: Clone Rust SDK
-        run: git clone --branch master --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
+        run: git clone --branch "${{ steps.sdk.outputs.ref }}" --single-branch --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git rust/sia-sdk-rs
 
       - name: Cache Rust target + registry
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1

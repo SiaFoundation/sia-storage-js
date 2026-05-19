@@ -1,0 +1,122 @@
+# Daily check for new sia-sdk-rs releases. If either the napi or wasm version
+# in .sia-sdk-rs.json has fallen behind the latest GitHub release for that
+# crate, this workflow updates the file, writes a `.changeset/sdk-update.md`,
+# and pushes to main. The push triggers prepare-release.yml, which opens the
+# release PR.
+#
+# Idempotent: the changeset filename is stable, and the comparison is
+# current-vs-latest, so re-running with no upstream changes is a no-op.
+#
+# Upstream assumption (relevant if things ever go wrong): napi and wasm
+# release tags share a single commit. Upstream's release CI tags every
+# workspace crate at once — release "bursts" span 1-2 seconds, verifiable
+# via `gh release list -R SiaFoundation/sia-sdk-rs`. The crate version
+# numbers themselves diverge (e.g. napi v0.7.x, wasm v0.3.x), which is why
+# .sia-sdk-rs.json tracks each separately. If upstream ever stopped doing
+# this and tagged napi and wasm at different commits, ci.yml (which clones
+# once at the napi tag and builds both crates from that clone) would test
+# wasm built from the napi-tag commit while release.yml's build-wasm job
+# publishes from the wasm-tag commit — CI green, runtime mismatch in npm.
+# Remedy if that happens: make ci.yml clone twice (once per tag).
+name: Check SDK Update
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: check-sdk-update
+  cancel-in-progress: true
+
+jobs:
+  check-and-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read current versions from .sia-sdk-rs.json
+        id: current
+        run: |
+          set -euo pipefail
+          echo "napi=$(jq -r .napi .sia-sdk-rs.json)" >> "$GITHUB_OUTPUT"
+          echo "wasm=$(jq -r .wasm .sia-sdk-rs.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch latest stable releases from sia-sdk-rs
+        id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # All non-prerelease tags, newest first.
+          tags=$(gh api repos/SiaFoundation/sia-sdk-rs/releases --paginate \
+            --jq '[.[] | select(.prerelease == false) | .tag_name]')
+          napi=$(echo "$tags" | jq -r '[.[] | select(startswith("sia_storage_napi/v"))] | first')
+          wasm=$(echo "$tags" | jq -r '[.[] | select(startswith("sia_storage_wasm/v"))] | first')
+          if [ -z "$napi" ] || [ "$napi" = "null" ]; then
+            echo "Could not find any sia_storage_napi release" >&2
+            exit 1
+          fi
+          if [ -z "$wasm" ] || [ "$wasm" = "null" ]; then
+            echo "Could not find any sia_storage_wasm release" >&2
+            exit 1
+          fi
+          echo "napi=$napi" >> "$GITHUB_OUTPUT"
+          echo "wasm=$wasm" >> "$GITHUB_OUTPUT"
+
+      - name: Compare current vs latest
+        id: diff
+        run: |
+          echo "napi: ${{ steps.current.outputs.napi }} -> ${{ steps.latest.outputs.napi }}"
+          echo "wasm: ${{ steps.current.outputs.wasm }} -> ${{ steps.latest.outputs.wasm }}"
+          if [ "${{ steps.current.outputs.napi }}" = "${{ steps.latest.outputs.napi }}" ] \
+             && [ "${{ steps.current.outputs.wasm }}" = "${{ steps.latest.outputs.wasm }}" ]; then
+            echo "Already up to date."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update .sia-sdk-rs.json
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          NAPI: ${{ steps.latest.outputs.napi }}
+          WASM: ${{ steps.latest.outputs.wasm }}
+        run: |
+          jq -n --arg napi "$NAPI" --arg wasm "$WASM" \
+            '{napi: $napi, wasm: $wasm}' > .sia-sdk-rs.json
+
+      - name: Write changeset
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          NAPI: ${{ steps.latest.outputs.napi }}
+          WASM: ${{ steps.latest.outputs.wasm }}
+        run: |
+          # Strip the "sia_storage_napi/" / "sia_storage_wasm/" prefixes so the
+          # changeset reads like "napi v0.7.2, wasm v0.3.2".
+          cat > .changeset/sdk-update.md <<EOF
+          ---
+          default: patch
+          ---
+
+          #### Update sia-sdk-rs (napi ${NAPI##*/}, wasm ${WASM##*/})
+          EOF
+
+      - name: Commit and push to main
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          NAPI: ${{ steps.latest.outputs.napi }}
+          WASM: ${{ steps.latest.outputs.wasm }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .sia-sdk-rs.json .changeset/sdk-update.md
+          # Trim "sia_storage_napi/" / "sia_storage_wasm/" prefixes from tags
+          # for a tighter commit subject: "chore: update sia-sdk-rs (napi=v0.7.2, wasm=v0.3.2)".
+          git commit -m "chore: update sia-sdk-rs (napi=${NAPI##*/}, wasm=${WASM##*/})"
+          git push

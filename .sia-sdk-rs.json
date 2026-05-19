@@ -1,0 +1,4 @@
+{
+  "napi": "sia_storage_napi/v0.7.2",
+  "wasm": "sia_storage_wasm/v0.3.2"
+}
