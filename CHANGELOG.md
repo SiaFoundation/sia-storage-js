@@ -1,4 +1,13 @@
 # Changelog
+## 0.0.11 (2026-05-19)
+
+### Fixes
+
+#### Update sia-sdk-rs to napi v0.7.2, wasm v0.3.2
+
+First published npm release built from tagged sia-sdk-rs versions
+(previously the build cloned master).
+
 ## 0.0.10 (2026-05-13)
 
 ### Fixes
