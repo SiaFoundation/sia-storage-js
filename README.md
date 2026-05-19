@@ -1,6 +1,8 @@
-# sia-storage
+# sia-storage-js
 
 TypeScript SDK for building decentralized storage apps on the [Sia](https://sia.tech) network. Works in Node.js, Bun, and the browser.
+
+For React Native, see [react-native-sia](https://github.com/SiaFoundation/react-native-sia).
 
 ## Install
 
