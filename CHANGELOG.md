@@ -1,4 +1,10 @@
 # Changelog
+## 0.0.12 (2026-05-20)
+
+### Fixes
+
+- Compile WASM with SIMD support.
+
 ## 0.0.11 (2026-05-19)
 
 ### Fixes
