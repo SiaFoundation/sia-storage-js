@@ -66,7 +66,6 @@ console.log('Building WASM (sia_storage_wasm)...')
 execSync('wasm-pack build --target web --release --out-dir pkg', {
   cwd: wasmCrateDir,
   stdio: 'inherit',
-  env: { ...process.env, RUSTFLAGS: '--cfg=web_sys_unstable_apis' },
 })
 
 console.log('Copying artifacts into wasm/...')
