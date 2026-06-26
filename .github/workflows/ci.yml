@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
@@ -82,6 +83,9 @@ jobs:
 
       - run: bun install && bun run build
 
-      - run: bunx playwright install chromium --with-deps
+      # --with-deps is a Linux-only apt step; on the macOS runner it hangs
+      # after the browser download. The macOS browser bundle is self-contained.
+      - run: bunx playwright install chromium
+        timeout-minutes: 5
 
       - run: bun run test:all
