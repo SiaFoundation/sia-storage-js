@@ -167,21 +167,9 @@ jobs:
 
       - run: bun install && bun run build
 
-      # --with-deps is a Linux-only apt step that hung the macOS runner after
-      # the download; the macOS browser bundle is self-contained, so it's
-      # dropped. The CDN download itself also stalls intermittently on macOS
-      # runners (and a failed run never repopulates the browser cache), so
-      # retry with a per-attempt watchdog. macOS has no `timeout`, hence perl.
-      - name: Install Playwright Chromium
-        timeout-minutes: 8
-        run: |
-          for i in 1 2 3; do
-            if perl -e 'alarm shift; exec @ARGV' 120 bunx playwright install chromium; then
-              exit 0
-            fi
-            echo "Playwright install attempt $i stalled or failed; retrying"
-          done
-          exit 1
+      # No --with-deps: it's Linux-only (apt); the macOS bundle is self-contained.
+      - run: bunx playwright install chromium
+        timeout-minutes: 5
 
       - run: bun run test:all
 
