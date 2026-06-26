@@ -12,7 +12,12 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # RELEASE_PAT (a real user), not GITHUB_TOKEN: knope's push to the
+          # release branch and the PR it opens must be attributed to a user so
+          # the release PR's CI runs. GITHUB_TOKEN-authored events don't trigger
+          # workflows, so that PR's "test" check would sit in action_required
+          # awaiting a manual "Approve and run" before it could merge.
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Configure Git
         run: |
@@ -27,5 +32,5 @@ jobs:
 
       - run: knope prepare-release --verbose
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
         continue-on-error: true
