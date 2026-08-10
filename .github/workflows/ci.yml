@@ -83,6 +83,8 @@ jobs:
 
       - run: bun install && bun run build
 
+      - run: bun run typecheck
+
       # No --with-deps: it's Linux-only (apt); the macOS bundle is self-contained.
       - run: bunx playwright install chromium
         timeout-minutes: 5

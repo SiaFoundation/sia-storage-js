@@ -11,6 +11,7 @@ import {
   runChromiumSmoke,
   staticServe,
 } from './_bundler-helpers'
+import { TS_BUILD } from './_ts-versions'
 
 describe('next.js bundler integration (App Router, static export)', () => {
   let tmpDir: string
@@ -40,7 +41,7 @@ describe('next.js bundler integration (App Router, static export)', () => {
       ),
     )
 
-    npmInstall(tmpDir, `${tarball} next react react-dom typescript @types/node @types/react @types/react-dom`)
+    npmInstall(tmpDir, `${tarball} next react react-dom typescript@${TS_BUILD} @types/node @types/react @types/react-dom`)
 
     // Next 16 defaults to Turbopack — we test the default since that's
     // what users actually get. The smoke component is dynamic({ssr:false})

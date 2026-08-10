@@ -12,6 +12,7 @@ import {
   staticServe,
   writePackageJson,
 } from './_bundler-helpers'
+import { TS_BUILD } from './_ts-versions'
 
 describe('esbuild bundler integration', () => {
   let tmpDir: string
@@ -27,7 +28,7 @@ describe('esbuild bundler integration', () => {
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
     copyFixtures(fixtureDir, tmpDir, ['tsconfig.json', 'typecheck.ts'])
 
-    npmInstall(tmpDir, `${tarball} esbuild typescript`)
+    npmInstall(tmpDir, `${tarball} esbuild typescript@${TS_BUILD}`)
 
     const distDir = join(tmpDir, 'dist')
     mkdirSync(distDir, { recursive: true })

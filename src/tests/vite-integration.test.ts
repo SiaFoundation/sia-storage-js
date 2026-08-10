@@ -12,6 +12,7 @@ import {
   staticServe,
   writePackageJson,
 } from './_bundler-helpers'
+import { TS_BUILD } from './_ts-versions'
 
 describe('vite bundler integration', () => {
   let tmpDir: string
@@ -32,7 +33,7 @@ describe('vite bundler integration', () => {
     ])
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
 
-    npmInstall(tmpDir, `${tarball} vite typescript`)
+    npmInstall(tmpDir, `${tarball} vite typescript@${TS_BUILD}`)
     execSync('npx vite build --logLevel error', {
       cwd: tmpDir,
       stdio: ['pipe', 'pipe', 'pipe'],

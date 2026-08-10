@@ -12,6 +12,7 @@ import {
   staticServe,
   writePackageJson,
 } from './_bundler-helpers'
+import { TS_BUILD } from './_ts-versions'
 
 describe('rollup bundler integration', () => {
   let tmpDir: string
@@ -33,7 +34,7 @@ describe('rollup bundler integration', () => {
 
     npmInstall(
       tmpDir,
-      `${tarball} rollup @rollup/plugin-node-resolve @rollup/plugin-commonjs typescript`,
+      `${tarball} rollup @rollup/plugin-node-resolve @rollup/plugin-commonjs typescript@${TS_BUILD}`,
     )
     execSync('npx rollup -c rollup.config.mjs', {
       cwd: tmpDir,

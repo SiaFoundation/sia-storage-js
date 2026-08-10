@@ -11,6 +11,11 @@ import {
   runChromiumSmoke,
   writePackageJson,
 } from './_bundler-helpers'
+import { TS_BUILD } from './_ts-versions'
+
+// ReturnType drops Bun.spawn's literal option types, widening stdout off the
+// stream it actually is.
+type PipedSubprocess = Bun.Subprocess<'ignore', 'pipe', 'pipe'>
 
 // Covers `vite dev` (the prod build is covered by vite-integration.test.ts).
 // Without `optimizeDeps.exclude: ['@siafoundation/sia-storage']`, Vite's deps pre-bundler
@@ -19,7 +24,7 @@ import {
 describe('vite dev bundler integration', () => {
   let tmpDir: string
   let tarball: string
-  let devProc: ReturnType<typeof Bun.spawn> | undefined
+  let devProc: PipedSubprocess | undefined
   let teardown: () => Promise<void>
   let result: { ok: boolean; error?: string }
 
@@ -36,7 +41,7 @@ describe('vite dev bundler integration', () => {
     ])
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
 
-    npmInstall(tmpDir, `${tarball} vite typescript`)
+    npmInstall(tmpDir, `${tarball} vite typescript@${TS_BUILD}`)
 
     const port = 54173
     devProc = Bun.spawn(['npx', 'vite', '--port', String(port), '--strictPort'], {
@@ -73,7 +78,7 @@ describe('vite dev bundler integration', () => {
   })
 })
 
-async function waitForDevReady(proc: ReturnType<typeof Bun.spawn>, timeoutMs: number) {
+async function waitForDevReady(proc: PipedSubprocess, timeoutMs: number) {
   const deadline = Date.now() + timeoutMs
   const decoder = new TextDecoder()
   const reader = proc.stdout.getReader()

@@ -12,6 +12,7 @@ import {
   staticServe,
   writePackageJson,
 } from './_bundler-helpers'
+import { TS_BUILD } from './_ts-versions'
 
 describe('webpack 5 bundler integration', () => {
   let tmpDir: string
@@ -33,7 +34,7 @@ describe('webpack 5 bundler integration', () => {
     ])
     cpSync(join(FIXTURES, 'browser-smoke.js'), join(tmpDir, 'main.js'))
 
-    npmInstall(tmpDir, `${tarball} webpack webpack-cli html-webpack-plugin typescript`)
+    npmInstall(tmpDir, `${tarball} webpack webpack-cli html-webpack-plugin typescript@${TS_BUILD}`)
     execSync('npx webpack --config webpack.config.cjs', {
       cwd: tmpDir,
       stdio: ['pipe', 'pipe', 'pipe'],

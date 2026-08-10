@@ -17,10 +17,9 @@ permissions:
   pull-requests: write
 
 # Used by the checkout (knope's `git push` inherits it) and by knope's API
-# calls. GitHub parks runs from a GITHUB_TOKEN-authored event in
-# action_required, so this PR's checks wait on a maintainer clicking "Approve
-# and run". Switch to RELEASE_PAT, which acts as a real user, once it holds
-# pull requests write.
+# calls. A PR opened by GITHUB_TOKEN does not start its own checks; they wait on
+# a maintainer clicking "Approve and run". Switch to RELEASE_PAT, which acts as
+# a real user, once it holds pull requests write.
 env:
   RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   # RELEASE_TOKEN: ${{ secrets.RELEASE_PAT }}
