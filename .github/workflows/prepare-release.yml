@@ -4,6 +4,27 @@ on:
   push:
     branches: [main]
 
+# Concurrent runs both force-push `release`, so the one that finishes last wins.
+# If that is the run from the earlier commit, the release PR drops the newer
+# change files.
+concurrency: prepare-release
+
+# GITHUB_TOKEN needs both: contents write to force-push `release`, pull requests
+# write for create-release-pr.ts. RELEASE_PAT must carry the same two; without
+# the second the branch push succeeds and createPullRequest fails.
+permissions:
+  contents: write
+  pull-requests: write
+
+# Used by the checkout (knope's `git push` inherits it) and by knope's API
+# calls. GitHub parks runs from a GITHUB_TOKEN-authored event in
+# action_required, so this PR's checks wait on a maintainer clicking "Approve
+# and run". Switch to RELEASE_PAT, which acts as a real user, once it holds
+# pull requests write.
+env:
+  RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # RELEASE_TOKEN: ${{ secrets.RELEASE_PAT }}
+
 jobs:
   prepare-release:
     if: "!contains(github.event.head_commit.message, 'chore: release')"
@@ -12,12 +33,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
-          # RELEASE_PAT (a real user), not GITHUB_TOKEN: knope's push to the
-          # release branch and the PR it opens must be attributed to a user so
-          # the release PR's CI runs. GITHUB_TOKEN-authored events don't trigger
-          # workflows, so that PR's "test" check would sit in action_required
-          # awaiting a manual "Approve and run" before it could merge.
-          token: ${{ secrets.RELEASE_PAT }}
+          token: ${{ env.RELEASE_TOKEN }}
 
       - name: Configure Git
         run: |
@@ -30,7 +46,21 @@ jobs:
         with:
           version: 0.22.2
 
-      - run: knope prepare-release --verbose
+      # knope prepare-release errors when there's nothing to release, which is
+      # most pushes. Gating on change-file presence keeps that quiet where a
+      # blanket continue-on-error would also hide a real knope, gh, or git
+      # failure. (ignore_conventional_commits in knope.toml makes change files
+      # the only release trigger.)
+      - name: Check for pending changes
+        id: changes
+        run: |
+          if ls .changeset/*.md >/dev/null 2>&1; then
+            echo "pending=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.changes.outputs.pending == 'true'
+        run: knope prepare-release --verbose
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-        continue-on-error: true
+          GITHUB_TOKEN: ${{ env.RELEASE_TOKEN }}
