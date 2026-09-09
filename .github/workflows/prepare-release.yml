@@ -9,30 +9,37 @@ on:
 # change files.
 concurrency: prepare-release
 
-# GITHUB_TOKEN needs both: contents write to force-push `release`, pull requests
-# write for create-release-pr.ts. RELEASE_PAT must carry the same two; without
-# the second the branch push succeeds and createPullRequest fails.
+# The default token does nothing here. The branch push and the pull request
+# both go through the app token minted below.
 permissions:
-  contents: write
-  pull-requests: write
-
-# Used by the checkout (knope's `git push` inherits it) and by knope's API
-# calls. A PR opened by GITHUB_TOKEN does not start its own checks; they wait on
-# a maintainer clicking "Approve and run". Switch to RELEASE_PAT, which acts as
-# a real user, once it holds pull requests write.
-env:
-  RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  # RELEASE_TOKEN: ${{ secrets.RELEASE_PAT }}
+  contents: read
 
 jobs:
   prepare-release:
     if: "!contains(github.event.head_commit.message, 'chore: release')"
     runs-on: ubuntu-latest
     steps:
+      # An app token, not GITHUB_TOKEN: a pull request opened with the workflow
+      # token triggers no workflows, so the release PR's required `test` check
+      # never runs and it cannot merge.
+      - name: Mint bot token
+        id: bot-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.SIA_CI_BOT_APP_ID }}
+          private-key: ${{ secrets.SIA_CI_BOT_PRIVATE_KEY }}
+          # Contents to force-push `release`, pull requests for
+          # create-release-pr.ts. Without the second the branch push succeeds
+          # and the PR create fails.
+          permission-contents: write
+          permission-pull-requests: write
+
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
-          token: ${{ env.RELEASE_TOKEN }}
+          # knope force-pushes `release` later in the run, using the credentials
+          # checkout saves here.
+          token: ${{ steps.bot-token.outputs.token }}
 
       - name: Configure Git
         run: |
@@ -62,4 +69,6 @@ jobs:
       - if: steps.changes.outputs.pending == 'true'
         run: knope prepare-release --verbose
         env:
-          GITHUB_TOKEN: ${{ env.RELEASE_TOKEN }}
+          # Read both by knope's own API calls and by the `gh` that
+          # create-release-pr.ts shells out to.
+          GITHUB_TOKEN: ${{ steps.bot-token.outputs.token }}
