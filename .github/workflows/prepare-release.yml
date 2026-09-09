@@ -3,6 +3,9 @@ name: Prepare Release
 on:
   push:
     branches: [main]
+  # The way back after a release PR is closed or a run fails, without having to
+  # push a commit to main to retrigger.
+  workflow_dispatch:
 
 # Concurrent runs both force-push `release`, so the one that finishes last wins.
 # If that is the run from the earlier commit, the release PR drops the newer
@@ -16,7 +19,11 @@ permissions:
 
 jobs:
   prepare-release:
-    if: "!contains(github.event.head_commit.message, 'chore: release')"
+    # Subject only: head_commit.message carries the body too, so matching
+    # anywhere in it skips any commit that merely quotes a release subject while
+    # explaining something. A dispatch has no head_commit at all, so it is
+    # allowed explicitly rather than resting on how a missing value coerces.
+    if: "github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore: release')"
     runs-on: ubuntu-latest
     steps:
       # An app token, not GITHUB_TOKEN: a pull request opened with the workflow
