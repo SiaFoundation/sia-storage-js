@@ -5,8 +5,11 @@ on:
     types: [published]
   workflow_dispatch:
 
+# The build and test jobs only check out and pass artifacts between themselves.
+# publish declares its own contents plus the id-token write that npm trusted
+# publishing needs.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-napi:
