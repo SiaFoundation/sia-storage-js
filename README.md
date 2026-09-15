@@ -115,7 +115,7 @@ Near-identical surfaces. Real differences:
 - Numeric sizes are `number` on browser, `bigint` on Node. Byte arrays are `Uint8Array` on browser, `Buffer` on Node (`Buffer` is a `Uint8Array` subclass; both accept either as input).
 - Sharing key seeds are hex `string` on browser, `Buffer` on Node. This covers `SharingKey.seed()`, `SharingKey.fromSeed(seed)`, and `SharedSdk.connect(indexerUrl, seed)`.
 - `sdk.unshareObject(key, object)` takes a `PinnedObject` on browser and an object id `string` on Node.
-- `sharedSdk.hosts(query?)` accepts a `HostQuery` on browser; on Node it takes no arguments.
+- `sdk.hosts(query?)` and `sharedSdk.hosts(query?)` accept a `HostQuery` on browser; on Node they take no arguments.
 
 ## API
 
@@ -131,7 +131,7 @@ Near-identical surfaces. Real differences:
 
 ### `Sdk`
 
-Returned from `Builder.register()` or `Builder.connected()`.
+Returned from `Builder.register()`, `Builder.connected()`, or `Builder.connectPreAuthorized()`.
 
 | | |
 |---|---|
@@ -143,7 +143,7 @@ Returned from `Builder.register()` or `Builder.connected()`.
 | `updateObjectMetadata(object)` | Push local metadata changes to the indexer. |
 | `objectShareUrl(object, validUntil)` / `objectFromShareUrl(url)` | Create / consume share URLs. |
 | `objectEvents(cursor?, limit)` | Paginated change feed. |
-| `hosts()` / `slab(id)` / `account()` / `pruneSlabs()` | Indexer reads. |
+| `hosts(query?)` / `slab(id)` / `account()` / `pruneSlabs()` | Indexer reads. |
 | `createSharingKey(description, expiresAt?)` | Create a `SharingKey` for read-only sharing. |
 | `sharingKeys(offset, limit)` / `sharingKey(key)` | List keys / fetch one key's `KeyRecord`. |
 | `shareObject(key, object)` / `unshareObject(key, object)` | Attach / detach an object on a sharing key. |
@@ -163,7 +163,7 @@ Returned from `Builder.register()` or `Builder.connected()`.
 | `connected(appKey)` | Reconnect with a saved `AppKey` → `Sdk \| null`. |
 | `reconnecting()` | Whether the approved connect key already has an account. |
 | `matchesExistingAppKey(phrase)` | Whether a phrase derives an already-registered app key. |
-| `connectPreAuthorized(key, phrase)` | Skip the approval flow with a pre-authorized key → `Sdk`. |
+| `connectPreAuthorized(seed, phrase)` | Skip the approval flow with a pre-authorized key's 32-byte seed → `Sdk`. |
 
 ### `AppKey`
 
@@ -175,7 +175,7 @@ Returned from `Builder.register()` or `Builder.connected()`.
 
 `new PinnedObject()` for new uploads, or `sdk.object(key)`.
 
-`id()` · `size()` · `encodedSize()` · `slabs()` · `metadata()` · `updateMetadata(bytes)` · `truncate(length)` · `createdAt()` · `updatedAt()` · `seal(appKey)` · `PinnedObject.open(appKey, sealed)`
+`id()` · `size()` · `encodedSize()` · `slabs()` · `metadata()` · `updateMetadata(bytes)` · `truncate(length: bigint)` · `createdAt()` · `updatedAt()` · `seal(appKey)` · `PinnedObject.open(appKey, sealed)`
 
 ### `PackedUpload`
 
@@ -205,7 +205,7 @@ sharing key's seed. Downloads are paid for by the key's owner.
 | `stats()` | The key's `KeyStats` snapshot. |
 | `object(id)` / `objects(offset, limit)` | Read the objects the key grants access to. |
 | `download(object, options?)` | Returns a `ReadableStream`. |
-| `hosts()` | Hosts serving this key's objects. |
+| `hosts(query?)` | Hosts serving this key's objects. |
 
 ## License
 

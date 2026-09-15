@@ -1,5 +1,5 @@
 ---
-default: minor
+default: major
 ---
 
 #### Update sia-sdk-rs (napi v0.10.0, wasm v0.6.0)
