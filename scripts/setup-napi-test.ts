@@ -22,15 +22,10 @@ const pkgDir = join(ROOT, 'node_modules', pkgName)
 const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'))
   .version
 
-// Upstream's napi-rs config sets binaryName: "sia-storage", so the build emits
-// sia-storage.<target>.node. Depending on the napi-rs CLI version, <target> is
-// either the bare platform-arch or the abi-qualified suffix used for the
-// platform package name, so accept both.
-const binaryCandidates = [
-  join(NAPI_CRATE_DIR, `sia-storage.${suffix}.node`),
-  join(NAPI_CRATE_DIR, `sia-storage.${platform}-${arch}.node`),
-]
-const resolveBuiltBinary = () => binaryCandidates.find((p) => existsSync(p))
+// Upstream's napi-rs config sets binaryName: "sia-storage". napi-rs adds the
+// same suffix as the platform package, e.g. sia-storage.linux-x64-gnu.node.
+const binaryName = `sia-storage.${suffix}.node`
+const builtBinary = join(NAPI_CRATE_DIR, binaryName)
 const generatedDts = join(NAPI_CRATE_DIR, 'index.d.ts')
 
 if (!existsSync(NAPI_CRATE_DIR)) {
@@ -39,16 +34,15 @@ if (!existsSync(NAPI_CRATE_DIR)) {
   process.exit(1)
 }
 
-if (!resolveBuiltBinary() || !existsSync(generatedDts)) {
+if (!existsSync(builtBinary) || !existsSync(generatedDts)) {
   console.log(`Building NAPI binary + types in ${NAPI_CRATE_DIR}...`)
   await $`bunx @napi-rs/cli build --release --platform --dts index.d.ts`.cwd(
     NAPI_CRATE_DIR,
   )
 }
 
-const builtBinary = resolveBuiltBinary()
-if (!builtBinary) {
-  console.error(`Build did not produce any of: ${binaryCandidates.join(', ')}`)
+if (!existsSync(builtBinary)) {
+  console.error(`Build did not produce ${builtBinary}`)
   process.exit(1)
 }
 
