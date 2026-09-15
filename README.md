@@ -113,6 +113,9 @@ Near-identical surfaces. Real differences:
 
 - App identifier: `appMeta.appId: string (hex)` on browser, `appMeta.id: Buffer(32)` on Node.
 - Numeric sizes are `number` on browser, `bigint` on Node. Byte arrays are `Uint8Array` on browser, `Buffer` on Node (`Buffer` is a `Uint8Array` subclass; both accept either as input).
+- Sharing key seeds are hex `string` on browser, `Buffer` on Node. This covers `SharingKey.seed()`, `SharingKey.fromSeed(seed)`, and `SharedSdk.connect(indexerUrl, seed)`.
+- `sdk.unshareObject(key, object)` takes a `PinnedObject` on browser and an object id `string` on Node.
+- `sharedSdk.hosts(query?)` accepts a `HostQuery` on browser; on Node it takes no arguments.
 
 ## API
 
@@ -138,9 +141,14 @@ Returned from `Builder.register()` or `Builder.connected()`.
 | `uploadPacked(options?)` | `PackedUpload` for batching small files into shared slabs. |
 | `object(key)` / `deleteObject(key)` / `pinObject(object)` | Object CRUD. |
 | `updateObjectMetadata(object)` | Push local metadata changes to the indexer. |
-| `shareObject(object, validUntil)` / `sharedObject(url)` | Create / consume share URLs. |
+| `objectShareUrl(object, validUntil)` / `objectFromShareUrl(url)` | Create / consume share URLs. |
 | `objectEvents(cursor?, limit)` | Paginated change feed. |
 | `hosts()` / `slab(id)` / `account()` / `pruneSlabs()` | Indexer reads. |
+| `createSharingKey(description, expiresAt?)` | Create a `SharingKey` for read-only sharing. |
+| `sharingKeys(offset, limit)` / `sharingKey(key)` | List keys / fetch one key's `KeyRecord`. |
+| `shareObject(key, object)` / `unshareObject(key, object)` | Attach / detach an object on a sharing key. |
+| `sharedObjects(key, offset, limit)` | Objects attached to a sharing key. |
+| `revokeSharingKey(key)` | Delete the key and detach all of its objects. |
 
 ### `Builder`
 
@@ -153,6 +161,9 @@ Returned from `Builder.register()` or `Builder.connected()`.
 | `waitForApproval()` | Resolves once the user approves. |
 | `register(phrase)` | Finish onboarding with a new recovery phrase → `Sdk`. |
 | `connected(appKey)` | Reconnect with a saved `AppKey` → `Sdk \| null`. |
+| `reconnecting()` | Whether the approved connect key already has an account. |
+| `matchesExistingAppKey(phrase)` | Whether a phrase derives an already-registered app key. |
+| `connectPreAuthorized(key, phrase)` | Skip the approval flow with a pre-authorized key → `Sdk`. |
 
 ### `AppKey`
 
@@ -164,13 +175,37 @@ Returned from `Builder.register()` or `Builder.connected()`.
 
 `new PinnedObject()` for new uploads, or `sdk.object(key)`.
 
-`id()` · `size()` · `encodedSize()` · `slabs()` · `metadata()` · `updateMetadata(bytes)` · `createdAt()` · `updatedAt()` · `seal(appKey)` · `PinnedObject.open(appKey, sealed)`
+`id()` · `size()` · `encodedSize()` · `slabs()` · `metadata()` · `updateMetadata(bytes)` · `truncate(length)` · `createdAt()` · `updatedAt()` · `seal(appKey)` · `PinnedObject.open(appKey, sealed)`
 
 ### `PackedUpload`
 
 From `sdk.uploadPacked()`.
 
 `add(stream)` · `finalize()` · `cancel()` · `remaining()` · `length()` · `slabs()`
+
+### `SharingKey`
+
+From `sdk.createSharingKey()`, or `SharingKey.fromSeed(seed)` to import one.
+
+`publicKey` · `seed()` · `SharingKey.fromSeed(seed)`
+
+### `KeyRecord`
+
+The indexer's record for a sharing key, from `sdk.sharingKey()` or `sdk.sharingKeys()`.
+
+`key` · `description` · `stats`
+
+### `SharedSdk`
+
+`SharedSdk.connect(indexerUrl, seed)` — read-only access for a recipient holding a
+sharing key's seed. Downloads are paid for by the key's owner.
+
+| | |
+|---|---|
+| `stats()` | The key's `KeyStats` snapshot. |
+| `object(id)` / `objects(offset, limit)` | Read the objects the key grants access to. |
+| `download(object, options?)` | Returns a `ReadableStream`. |
+| `hosts()` | Hosts serving this key's objects. |
 
 ## License
 
