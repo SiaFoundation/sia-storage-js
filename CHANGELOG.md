@@ -1,4 +1,10 @@
 # Changelog
+## 0.1.1 (2026-09-16)
+
+### Fixes
+
+- Update sia-sdk-rs (napi v0.10.1, wasm v0.7.0)
+
 ## 0.1.0 (2026-09-15)
 
 ### Breaking Changes
