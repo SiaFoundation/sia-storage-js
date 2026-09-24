@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import {
   AppKey,
   Builder,
+  enableStreaming,
   generateRecoveryPhrase,
   initSia,
   type PackedUpload,
@@ -21,7 +22,7 @@ void _typeProbe
 
 declare global {
   interface Window {
-    __smoke?: { ok: boolean; error?: string }
+    __smoke?: { ok: boolean; error?: string; streaming?: boolean }
   }
 }
 
@@ -48,7 +49,7 @@ export default function Smoke() {
           logoUrl: undefined,
           callbackUrl: undefined,
         })
-        window.__smoke = { ok: true }
+        window.__smoke = { ok: true, streaming: await enableStreaming() }
         setStatus('done')
       } catch (e: unknown) {
         const error = e instanceof Error ? e.message : String(e)

@@ -2,6 +2,18 @@
 
 import wasmInit from '../wasm/sia_storage_wasm.js'
 
+export { detectPrivateRelay } from './relay'
+export { enableStreaming, openStreams } from './stream/page'
+export type {
+  AppCredentials,
+  CredentialsFor,
+  FileOptions,
+  SharedCredentials,
+  StreamedFile,
+  Streams,
+  StreamingOptions,
+} from './stream/page'
+
 let initPromise: Promise<unknown> | null = null
 
 /** Initialize the WASM module. Safe to call multiple times. */

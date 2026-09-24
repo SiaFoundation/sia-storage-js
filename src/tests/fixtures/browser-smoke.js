@@ -1,9 +1,10 @@
-// Browser smoke: prove WASM loads and the SDK actually runs when bundled
-// by a real Vite build. Exercises the same surface as the Node smoke,
-// using the WASM-variant AppMetadata shape.
+// Browser smoke: prove WASM loads and the SDK actually runs when bundled,
+// and that streaming turns on with the worker the test serves. Exercises the
+// same surface as the Node smoke, using the WASM-variant AppMetadata shape.
 import {
   AppKey,
   Builder,
+  enableStreaming,
   generateRecoveryPhrase,
   initSia,
   validateRecoveryPhrase,
@@ -30,7 +31,7 @@ try {
     serviceUrl: 'https://example.com',
   })
 
-  window.__smoke = { ok: true }
+  window.__smoke = { ok: true, streaming: await enableStreaming() }
 } catch (e) {
   window.__smoke = { ok: false, error: e && e.message ? e.message : String(e) }
 }

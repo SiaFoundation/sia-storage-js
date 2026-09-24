@@ -70,11 +70,85 @@ await packed.add(fileB.stream())
 for (const obj of await packed.finalize()) await sdk.pinObject(obj)
 ```
 
+## Streaming files
+
+Play video and audio without loading the whole file first, and save large files without holding them in memory. A service worker reads each object in ranges and answers the page with an ordinary URL, so `<video>` seeks on its own and a download goes to the browser's download manager. Where service workers are unavailable, the same calls read the object in the page instead, so the code is the same everywhere.
+
+```ts
+import { openStreams } from '@siafoundation/sia-storage'
+
+// An Sdk, with the indexer URL and app metadata its Builder was made with.
+const streams = openStreams(sdk, { indexerUrl, appMeta })
+
+// Or a SharedSdk, with the indexer URL and seed it was connected with.
+const sharedStreams = openStreams(sharedSdk, { indexerUrl, seed })
+
+// Any element or fetch that takes a URL.
+const video = await streams.url(object, { name: 'clip.mp4', type: 'video/mp4' })
+videoElement.src = video.url
+// When the element goes away:
+video.release()
+
+// From a click handler, so the browser allows the save.
+button.onclick = () => streams.download(object, { name: 'clip.mp4' })
+
+// When you're done with the SDK:
+streams.close()
+```
+
+### Serve the worker
+
+The worker is one file, `sia-storage-sw.js`, served from your site's root. Use the line for your setup.
+
+**Vite** (React, Vue, Svelte, Solid and others): add the plugin. It serves the worker in `vite dev`, emits it with the build, and excludes the SDK from dependency pre-bundling.
+
+```js
+// vite.config.js
+import { siaStorage } from '@siafoundation/sia-storage/vite'
+
+export default defineConfig({ plugins: [siaStorage()] })
+```
+
+**Next.js (App Router)**: add one route file.
+
+```ts
+// app/sia-storage-sw.js/route.ts
+export { GET } from '@siafoundation/sia-storage/next'
+export const dynamic = 'force-static'
+```
+
+**Anything else** (webpack, Rollup, esbuild, Parcel, the Next.js Pages Router, a static host): copy the worker into the folder served at your site's root. The file changes with each SDK version, so copy it on every install and leave it out of git.
+
+```json
+// package.json
+"scripts": { "postinstall": "sia-storage-worker public" }
+```
+
+### Good to know
+
+- **HTTPS or localhost.** Browsers only run service workers there. Anywhere else the page reads objects itself.
+- **A site served from a sub-path**, such as `/app/`, serves the worker there too and says where, before the first `openStreams`: `enableStreaming({ workerUrl: '/app/sia-storage-sw.js' })`.
+- **A site with its own service worker** can't add a second one, since a page has only one. Call `installStreams(self)` from `@siafoundation/sia-storage/stream-worker` inside yours, and point `enableStreaming` at it: `enableStreaming({ workerUrl: '/sw.js', type: 'module' })`.
+- **A Content Security Policy** needs `worker-src 'self'`.
+- **The credentials stay in memory.** The worker connects its own SDK, so it needs what yours was made with: a `SharedSdk`'s seed, or an `Sdk`'s app key, which it takes from `sdk.appKey()`. The page hands them over a message port, and the worker never writes them anywhere.
+- **Keep the tab open** until a download finishes. If the browser restarts the worker, it gets the credentials back from the page.
+- **The first download click** within a few seconds of `openStreams`, before the worker is ready, uses the save picker or an in-memory save instead.
+
+## iCloud Private Relay
+
+The SDK does not work through iCloud Private Relay. `detectPrivateRelay()` resolves true for a Safari visitor on it, so you can ask them to turn it off in iCloud settings. Other browsers resolve false without a request.
+
+```ts
+import { detectPrivateRelay } from '@siafoundation/sia-storage'
+
+if (await detectPrivateRelay()) showRelayNotice()
+```
+
 ## Framework notes
 
 The browser build is WebAssembly — most bundlers handle it directly, a few need a small hint.
 
-**Vite** — production builds work as-is. For `vite dev`, exclude the package from the dep pre-bundler so its `import.meta.url`-relative WASM path resolves correctly:
+**Vite**: the `siaStorage()` plugin from [Serve the worker](#serve-the-worker) covers this. Without it, production builds work as-is, and `vite dev` needs the package excluded from the dep pre-bundler so its `import.meta.url`-relative WASM path resolves correctly:
 
 ```js
 // vite.config.js
@@ -116,6 +190,7 @@ Near-identical surfaces. Real differences:
 - Sharing key seeds are hex `string` on browser, `Buffer` on Node. This covers `SharingKey.seed()`, `SharingKey.fromSeed(seed)`, and `SharedSdk.connect(indexerUrl, seed)`.
 - `sdk.unshareObject(key, object)` takes a `PinnedObject` on browser and an object id `string` on Node.
 - `sdk.hosts(query?)` and `sharedSdk.hosts(query?)` accept a `HostQuery` on browser; on Node they take no arguments.
+- `openStreams` gives a browser page URLs that a service worker serves. Node reads objects with `sdk.download(object, { offset, length })`, which already streams a range, so it needs no worker. On Node, `enableStreaming()` resolves false, and `url` and `download` on an `openStreams` handle reject.
 
 ## API
 
@@ -128,6 +203,7 @@ Near-identical surfaces. Real differences:
 | `validateRecoveryPhrase(phrase)` | Throws on invalid. |
 | `setLogger(callback, level)` | Receive SDK logs. |
 | `encodedSize(size, dataShards, parityShards)` | Encoded size after erasure coding. |
+| `detectPrivateRelay()` | Whether a Safari visitor is on iCloud Private Relay, which the SDK does not work through. |
 
 ### `Sdk`
 
@@ -206,6 +282,22 @@ sharing key's seed. Downloads are paid for by the key's owner.
 | `object(id)` / `objects(offset, limit)` | Read the objects the key grants access to. |
 | `download(object, options?)` | Returns a `ReadableStream`. |
 | `hosts(query?)` | Hosts serving this key's objects. |
+
+### Streaming
+
+| | |
+|---|---|
+| `openStreams(sdk, credentials)` | `Streams` for one SDK's objects. An `Sdk` takes `{ indexerUrl, appMeta }` and a `SharedSdk` takes `{ indexerUrl, seed }`, typed by which one you pass. |
+| `streams.url(object, options)` | `{ url, blob?, release() }`. Streams where it can, else reads the whole object into `blob`. |
+| `streams.download(object, options)` | Saves the object. Resolves `'streaming'`, `'saved'` or `'cancelled'`. Call it from a click handler. |
+| `streams.close()` | Cancels this handle's streams. Other handles on the same SDK keep theirs. |
+| `enableStreaming(options?)` | Registers the worker and resolves whether streaming is on. `openStreams` calls it for you, so call it only to pass `workerUrl`, `scope` or `type`. |
+
+`options` for `url` and `download`: `name`, `type` (MIME), `onError(message)` for failures after streaming starts (logged when omitted), `onProgress(bytes)` when the page reads the object itself, and `signal` for `url`.
+
+### `@siafoundation/sia-storage/stream-worker`
+
+`installStreams(self, { wasm? })` adds streaming to a service worker of your own. `wasm` is the SDK's WebAssembly as a URL, bytes or module, for bundlers that don't emit it.
 
 ## License
 

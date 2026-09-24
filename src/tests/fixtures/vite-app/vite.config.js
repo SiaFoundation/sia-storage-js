@@ -1,4 +1,6 @@
+import { siaStorage } from '@siafoundation/sia-storage/vite'
 import { defineConfig } from 'vite'
-export default defineConfig({
-  optimizeDeps: { exclude: ['@siafoundation/sia-storage'] },
-})
+
+// The plugin serves the streaming worker and excludes the SDK from Vite's
+// dependency pre-bundling, the only config a Vite app needs.
+export default defineConfig({ plugins: [siaStorage()] })
