@@ -8,7 +8,10 @@ import {
   FIXTURES,
   npmInstall,
   packIntoTmp,
-  runChromiumSmoke,
+  copyStreamingWorker,
+  ENGINES,
+  runBrowserSmoke,
+  type SmokeResult,
   staticServe,
   writePackageJson,
 } from './_bundler-helpers'
@@ -18,7 +21,7 @@ describe('esbuild bundler integration', () => {
   let tmpDir: string
   let tarball: string
   let teardown: () => Promise<void>
-  let result: { ok: boolean; error?: string }
+  let results: Record<(typeof ENGINES)[number], SmokeResult>
 
   beforeAll(async () => {
     ;({ tmpDir, tarball } = packIntoTmp('esbuild'))
@@ -45,19 +48,26 @@ describe('esbuild bundler integration', () => {
       join(distDir, 'sia_storage_wasm_bg.wasm'),
     )
 
+    copyStreamingWorker(tmpDir, 'dist')
+
     const { server, url } = staticServe(distDir)
-    const smoke = await runChromiumSmoke(url)
-    result = smoke.result
-    teardown = cleanup({ browser: smoke.browser, server, tmpDir, tarball })
+    const smoke = await runBrowserSmoke(url)
+    results = smoke.results
+    teardown = cleanup({ browsers: smoke.browsers, server, tmpDir, tarball })
   }, 180_000)
 
   afterAll(async () => {
     if (teardown) await teardown()
   })
 
-  test('esbuild-built page runs the SDK end-to-end', () => {
+  test.each([...ENGINES])('esbuild-built page runs the SDK end-to-end in %s', (engine) => {
+    const result = results[engine]
     if (!result.ok) throw new Error(`esbuild smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  test.each([...ENGINES])('streaming turns on with the worker the CLI copied into dist/ in %s', (engine) => {
+    expect(results[engine].streaming).toBe(true)
   })
 
   // WASM .d.ts must resolve under the "browser" condition for esbuild consumers.

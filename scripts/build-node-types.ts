@@ -22,6 +22,15 @@ content = content.replace(
 
 content += `
 export declare function initSia(): Promise<void>
+export declare function detectPrivateRelay(): Promise<boolean>
+/** Always false. Service worker streaming is for browser pages. */
+export declare function enableStreaming(options?: { workerUrl?: string; scope?: string; type?: 'classic' | 'module' }): Promise<boolean>
+/** For browser pages. In Node, \`url\` and \`download\` reject, and \`sdk.download()\` streams objects directly. */
+export declare function openStreams(sdk: object, credentials: { indexerUrl: string; appMeta: AppMetadata } | { indexerUrl: string; seed: string }): {
+  url(object: PinnedObject, options: { name: string; type?: string }): Promise<never>
+  download(object: PinnedObject, options: { name: string; type?: string }): Promise<never>
+  close(): void
+}
 `
 
 writeFileSync(OUT, content)

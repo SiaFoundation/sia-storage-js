@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { execSync } from 'node:child_process'
-import { cpSync } from 'node:fs'
+import { cpSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   cleanup,
@@ -8,7 +8,9 @@ import {
   FIXTURES,
   npmInstall,
   packIntoTmp,
-  runChromiumSmoke,
+  ENGINES,
+  runBrowserSmoke,
+  type SmokeResult,
   staticServe,
   writePackageJson,
 } from './_bundler-helpers'
@@ -18,7 +20,7 @@ describe('vite bundler integration', () => {
   let tmpDir: string
   let tarball: string
   let teardown: () => Promise<void>
-  let result: { ok: boolean; error?: string }
+  let results: Record<(typeof ENGINES)[number], SmokeResult>
 
   beforeAll(async () => {
     ;({ tmpDir, tarball } = packIntoTmp('vite'))
@@ -40,18 +42,42 @@ describe('vite bundler integration', () => {
     })
 
     const { server, url } = staticServe(join(tmpDir, 'dist'))
-    const smoke = await runChromiumSmoke(url)
-    result = smoke.result
-    teardown = cleanup({ browser: smoke.browser, server, tmpDir, tarball })
+    const smoke = await runBrowserSmoke(url)
+    results = smoke.results
+    teardown = cleanup({ browsers: smoke.browsers, server, tmpDir, tarball })
   }, 180_000)
 
   afterAll(async () => {
     if (teardown) await teardown()
   })
 
-  test('Vite-built page runs the SDK end-to-end', () => {
+  test.each([...ENGINES])('Vite-built page runs the SDK end-to-end in %s', (engine) => {
+    const result = results[engine]
     if (!result.ok) throw new Error(`Vite smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  // Structural types keep the plugin free of a Vite dependency, so check they
+  // still satisfy Vite's own plugin type.
+  test('typecheck: the plugin satisfies Vite\'s PluginOption', async () => {
+    await Bun.write(
+      join(tmpDir, 'plugin-typecheck.ts'),
+      [
+        "import type { PluginOption } from 'vite'",
+        "import { siaStorage } from '@siafoundation/sia-storage/vite'",
+        'const plugin: PluginOption = siaStorage()',
+        'void plugin',
+      ].join('\n'),
+    )
+    execSync(
+      'npx --no -- tsc --noEmit --strict --skipLibCheck --module esnext --moduleResolution bundler --target es2022 plugin-typecheck.ts',
+      { cwd: tmpDir, stdio: ['pipe', 'pipe', 'pipe'] },
+    )
+  })
+
+  test.each([...ENGINES])('streaming turns on with the worker the plugin emits at the root in %s', (engine) => {
+    expect(existsSync(join(tmpDir, 'dist', 'sia-storage-sw.js'))).toBe(true)
+    expect(results[engine].streaming).toBe(true)
   })
 
   // WASM .d.ts must resolve under the "browser" condition for vite consumers.

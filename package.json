@@ -8,6 +8,9 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "sia-storage-worker": "dist/cli.js"
+  },
   "files": [
     "dist",
     "wasm"
@@ -32,17 +35,30 @@
         "default": "./dist/index.js"
       }
     },
+    "./stream-worker": {
+      "types": "./dist/stream-worker.d.ts",
+      "default": "./dist/stream-worker.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "default": "./dist/next.js"
+    },
+    "./sia-storage-sw.js": "./dist/sia-storage-sw.js",
     "./wasm": "./wasm/sia_storage_wasm.js",
     "./wasm/*": "./wasm/*"
   },
   "scripts": {
-    "build": "bun run build-wasm && tsup && bun run scripts/build-node-types.ts",
+    "build": "bun run build-wasm && tsup --config tsup.worker.config.ts && tsup && bun run scripts/build-node-types.ts",
     "build-wasm": "bun run scripts/build-wasm.ts",
     "setup": "bun run scripts/setup-rust.ts",
     "setup-napi-test": "bun run scripts/setup-napi-test.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test src/tests/install-integration.test.ts",
-    "test:browser": "bun test src/tests/vite-integration.test.ts src/tests/esbuild-integration.test.ts src/tests/webpack-integration.test.ts src/tests/rollup-integration.test.ts src/tests/nextjs-integration.test.ts",
+    "test:browser": "bun test src/tests/vite-integration.test.ts src/tests/esbuild-integration.test.ts src/tests/webpack-integration.test.ts src/tests/rollup-integration.test.ts src/tests/nextjs-integration.test.ts src/tests/streaming.test.ts src/tests/stream-prebuilt-worker.test.ts",
     "test:all": "bun test",
     "prepublishOnly": "bun run build && bun test",
     "publish-npm": "bun run scripts/publish.ts"

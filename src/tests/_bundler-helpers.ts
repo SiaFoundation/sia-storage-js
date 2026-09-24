@@ -1,10 +1,11 @@
-// Bundler integration helpers: pack, install, build, serve, smoke via Chromium.
+// Bundler integration helpers: pack, install, build, serve, and smoke the
+// built page in Chromium, Firefox and WebKit.
 
 import { execSync } from 'node:child_process'
 import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { chromium, type Browser, type Page } from 'playwright'
+import { chromium, firefox, webkit, type Browser } from 'playwright'
 
 export const ROOT = join(import.meta.dir, '..', '..')
 export const FIXTURES = join(import.meta.dir, 'fixtures')
@@ -39,6 +40,14 @@ export function npmInstall(cwd: string, args: string) {
   })
 }
 
+/** Serves the prebuilt streaming worker from `dir`, as the README tells sites without a plugin to. */
+export function copyStreamingWorker(cwd: string, dir: string) {
+  execSync(`npx --no -- sia-storage-worker ${dir}`, {
+    cwd,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+}
+
 export function staticServe(distDir: string): {
   server: ReturnType<typeof Bun.serve>
   url: string
@@ -56,30 +65,42 @@ export function staticServe(distDir: string): {
   return { server, url: `http://localhost:${server.port}/` }
 }
 
-export async function runChromiumSmoke(
+export type SmokeResult = { ok: boolean; error?: string; streaming?: boolean }
+
+export const ENGINES = ['chromium', 'firefox', 'webkit'] as const
+export type Engine = (typeof ENGINES)[number]
+
+/** Loads the built page in each engine and collects what its smoke script reported. */
+export async function runBrowserSmoke(
   serverUrl: string,
-): Promise<{ browser: Browser; page: Page; result: { ok: boolean; error?: string } }> {
-  const browser = await chromium.launch({ headless: true })
-  const page = await browser.newPage()
-  await page.goto(serverUrl, { waitUntil: 'domcontentloaded' })
-  await page.waitForFunction(
-    () => (window as unknown as { __smoke?: unknown }).__smoke !== undefined,
-    { timeout: 30_000 },
-  )
-  const result = (await page.evaluate(
-    () => (window as unknown as { __smoke: { ok: boolean; error?: string } }).__smoke,
-  )) as { ok: boolean; error?: string }
-  return { browser, page, result }
+): Promise<{ browsers: Browser[]; results: Record<Engine, SmokeResult> }> {
+  const launchers = { chromium, firefox, webkit }
+  const browsers: Browser[] = []
+  const results = {} as Record<Engine, SmokeResult>
+  for (const engine of ENGINES) {
+    const browser = await launchers[engine].launch({ headless: true })
+    browsers.push(browser)
+    const page = await browser.newPage()
+    await page.goto(serverUrl, { waitUntil: 'domcontentloaded' })
+    await page.waitForFunction(
+      () => (window as unknown as { __smoke?: unknown }).__smoke !== undefined,
+      { timeout: 30_000 },
+    )
+    results[engine] = (await page.evaluate(
+      () => (window as unknown as { __smoke: SmokeResult }).__smoke,
+    )) as SmokeResult
+  }
+  return { browsers, results }
 }
 
 export function cleanup(opts: {
-  browser?: Browser
+  browsers?: Browser[]
   server?: ReturnType<typeof Bun.serve>
   tmpDir?: string
   tarball?: string
 }) {
   return async () => {
-    if (opts.browser) await opts.browser.close()
+    for (const browser of opts.browsers ?? []) await browser.close()
     if (opts.server) opts.server.stop()
     if (opts.tmpDir && existsSync(opts.tmpDir)) rmSync(opts.tmpDir, { recursive: true, force: true })
     if (opts.tarball && existsSync(opts.tarball)) rmSync(opts.tarball)

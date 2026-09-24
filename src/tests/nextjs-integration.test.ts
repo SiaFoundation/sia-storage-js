@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { execSync } from 'node:child_process'
-import { cpSync, mkdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   cleanup,
@@ -8,7 +8,9 @@ import {
   FIXTURES,
   npmInstall,
   packIntoTmp,
-  runChromiumSmoke,
+  ENGINES,
+  runBrowserSmoke,
+  type SmokeResult,
   staticServe,
 } from './_bundler-helpers'
 import { TS_BUILD } from './_ts-versions'
@@ -17,7 +19,7 @@ describe('next.js bundler integration (App Router, static export)', () => {
   let tmpDir: string
   let tarball: string
   let teardown: () => Promise<void>
-  let result: { ok: boolean; error?: string }
+  let results: Record<(typeof ENGINES)[number], SmokeResult>
 
   beforeAll(async () => {
     ;({ tmpDir, tarball } = packIntoTmp('nextjs'))
@@ -53,17 +55,23 @@ describe('next.js bundler integration (App Router, static export)', () => {
 
     const outDir = join(tmpDir, 'out')
     const { server, url } = staticServe(outDir)
-    const smoke = await runChromiumSmoke(url)
-    result = smoke.result
-    teardown = cleanup({ browser: smoke.browser, server, tmpDir, tarball })
+    const smoke = await runBrowserSmoke(url)
+    results = smoke.results
+    teardown = cleanup({ browsers: smoke.browsers, server, tmpDir, tarball })
   }, 360_000)
 
   afterAll(async () => {
     if (teardown) await teardown()
   })
 
-  test('Next.js (App Router, static export) runs the SDK end-to-end', () => {
+  test.each([...ENGINES])('Next.js (App Router, static export) runs the SDK end-to-end in %s', (engine) => {
+    const result = results[engine]
     if (!result.ok) throw new Error(`Next.js smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  test.each([...ENGINES])('streaming turns on with the worker the route handler exports in %s', (engine) => {
+    expect(existsSync(join(tmpDir, 'out', 'sia-storage-sw.js'))).toBe(true)
+    expect(results[engine].streaming).toBe(true)
   })
 })

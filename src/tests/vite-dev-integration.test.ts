@@ -8,7 +8,9 @@ import {
   FIXTURES,
   npmInstall,
   packIntoTmp,
-  runChromiumSmoke,
+  ENGINES,
+  runBrowserSmoke,
+  type SmokeResult,
   writePackageJson,
 } from './_bundler-helpers'
 import { TS_BUILD } from './_ts-versions'
@@ -20,13 +22,14 @@ type PipedSubprocess = Bun.Subprocess<'ignore', 'pipe', 'pipe'>
 // Covers `vite dev` (the prod build is covered by vite-integration.test.ts).
 // Without `optimizeDeps.exclude: ['@siafoundation/sia-storage']`, Vite's deps pre-bundler
 // breaks the `new URL(..., import.meta.url)` resolution inside the WASM glue
-// and `initSia()` blows up. The fixture's vite.config.js sets that exclude.
+// and `initSia()` blows up. The fixture's siaStorage() plugin sets that exclude,
+// and serves the streaming worker from the dev server.
 describe('vite dev bundler integration', () => {
   let tmpDir: string
   let tarball: string
   let devProc: PipedSubprocess | undefined
   let teardown: () => Promise<void>
-  let result: { ok: boolean; error?: string }
+  let results: Record<(typeof ENGINES)[number], SmokeResult>
 
   beforeAll(async () => {
     ;({ tmpDir, tarball } = packIntoTmp('vite-dev'))
@@ -52,10 +55,10 @@ describe('vite dev bundler integration', () => {
 
     await waitForDevReady(devProc, 30_000)
 
-    const smoke = await runChromiumSmoke(`http://localhost:${port}/`)
-    result = smoke.result
+    const smoke = await runBrowserSmoke(`http://localhost:${port}/`)
+    results = smoke.results
 
-    teardown = cleanup({ browser: smoke.browser, tmpDir, tarball })
+    teardown = cleanup({ browsers: smoke.browsers, tmpDir, tarball })
   }, 180_000)
 
   afterAll(async () => {
@@ -63,9 +66,14 @@ describe('vite dev bundler integration', () => {
     if (teardown) await teardown()
   })
 
-  test('Vite dev server runs the SDK end-to-end', () => {
+  test.each([...ENGINES])('Vite dev server runs the SDK end-to-end in %s', (engine) => {
+    const result = results[engine]
     if (!result.ok) throw new Error(`Vite dev smoke failed: ${result.error}`)
     expect(result.ok).toBe(true)
+  })
+
+  test.each([...ENGINES])('streaming turns on with the worker the plugin serves in dev in %s', (engine) => {
+    expect(results[engine].streaming).toBe(true)
   })
 
   // WASM .d.ts must resolve under the "browser" condition for vite consumers.

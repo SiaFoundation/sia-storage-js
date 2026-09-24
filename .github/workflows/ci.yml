@@ -86,7 +86,8 @@ jobs:
       - run: bun run typecheck
 
       # No --with-deps: it's Linux-only (apt); the macOS bundle is self-contained.
-      - run: bunx playwright install chromium
+      # Browser tests run in all three engines.
+      - run: bunx playwright install chromium firefox webkit
         timeout-minutes: 5
 
       - run: bun run test:all
