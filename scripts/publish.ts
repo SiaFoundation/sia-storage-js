@@ -17,6 +17,8 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 
+import { NATIVE_PACKAGES } from '../src/node/platforms'
+
 const ROOT = join(import.meta.dir, '..')
 const NAPI_DIR = join(ROOT, 'rust', 'sia-sdk-rs', 'sia_storage_napi')
 const ARTIFACTS_DIR = join(ROOT, 'artifacts')
@@ -24,7 +26,9 @@ const ARTIFACTS_DIR = join(ROOT, 'artifacts')
 const dryRun = process.argv.includes('--dry-run')
 const ci = process.argv.includes('--ci')
 
-const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'))
+const PKG_PATH = join(ROOT, 'package.json')
+const pkgSource = readFileSync(PKG_PATH, 'utf-8')
+const pkg = JSON.parse(pkgSource)
 const version = pkg.version
 console.log(
   `Publishing @siafoundation/sia-storage@${version}${dryRun ? ' (dry run)' : ''}`,
@@ -36,6 +40,16 @@ const PLATFORMS: Record<string, { os: string; cpu: string; file: string }> = {
   'linux-x64-gnu': { os: 'linux', cpu: 'x64', file: 'sia-storage.linux-x64-gnu.node' },
   'linux-arm64-gnu': { os: 'linux', cpu: 'arm64', file: 'sia-storage.linux-arm64-gnu.node' },
   'win32-x64-msvc': { os: 'win32', cpu: 'x64', file: 'sia-storage.win32-x64-msvc.node' },
+}
+
+// Every package published below must be one the loader requires, or the main
+// package would depend on a platform package it never loads.
+for (const suffix of Object.keys(PLATFORMS)) {
+  const name = `@siafoundation/sia-storage-${suffix}`
+  if (!Object.values(NATIVE_PACKAGES).includes(name)) {
+    console.error(`${name} is not in src/node/platforms.ts`)
+    process.exit(1)
+  }
 }
 
 function findBinary(info: { file: string }, suffix: string): string | null {
@@ -109,9 +123,26 @@ try {
     }
   }
 
+  // The platform packages are optionalDependencies of the published package
+  // only. Listed in package.json itself, a release would bump them to a
+  // version not yet on npm, leaving bun.lock behind on every release. The
+  // file is restored in `finally`.
+  const optionalDependencies = Object.fromEntries(
+    Object.values(NATIVE_PACKAGES).map((name) => [name, version]),
+  )
+  writeFileSync(
+    PKG_PATH,
+    JSON.stringify({ ...pkg, optionalDependencies }, null, 2) + '\n',
+  )
+
   console.log(`\n── Publishing @siafoundation/sia-storage@${version} ──`)
   if (dryRun) {
-    console.log('DRY RUN: would publish main package')
+    // Read back from disk, which is what npm publish would read, and printed
+    // on one line for src/tests/publish-manifest.test.ts.
+    const written = JSON.parse(readFileSync(PKG_PATH, 'utf-8'))
+    console.log(
+      `DRY RUN: optionalDependencies ${JSON.stringify(written.optionalDependencies ?? null)}`,
+    )
   } else {
     await $`npm publish --access public --provenance --ignore-scripts`.cwd(ROOT)
     console.log('✓ Published')
@@ -119,5 +150,6 @@ try {
 
   console.log('\n✓ Done!')
 } finally {
+  writeFileSync(PKG_PATH, pkgSource)
   rmSync(join(ROOT, '.tmp-publish'), { recursive: true, force: true })
 }
