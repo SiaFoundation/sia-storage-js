@@ -1,4 +1,7 @@
-import type { PinnedObject } from '../../wasm/sia_storage_wasm.js'
+import type {
+  PinnedObject,
+  ShardProgress,
+} from '../../wasm/sia_storage_wasm.js'
 import { streamErrorMessage } from './errors'
 import {
   type ClientReply,
@@ -8,6 +11,8 @@ import {
   requestReply,
   type Connection,
   type SourceDetails,
+  type StreamEvent,
+  type StreamStatus,
   type WorkerMessage,
 } from './protocol'
 import {
@@ -19,6 +24,9 @@ import {
 
 const SOURCE_TIMEOUT = 5_000
 const IDLE_TIMEOUT = 5 * 60_000
+// How long bytes and shard reports for one URL collect before they are sent,
+// so a stream costs a few messages a second rather than one per chunk.
+const REPORT_INTERVAL = 100
 
 /** An object as the page describes it. See `SourceDetails`. */
 export type ObjectRef = Pick<SourceDetails, 'objectId' | 'sealed'>
@@ -28,7 +36,11 @@ export type StreamSdk = {
   object(ref: ObjectRef): Promise<PinnedObject>
   download(
     object: PinnedObject,
-    range: { offset: number; length: number },
+    options: {
+      offset: number
+      length: number
+      onShardDownloaded?: (progress: ShardProgress) => void
+    },
   ): ReadableStream
   free(): void
 }
@@ -84,6 +96,11 @@ type Source = {
   ready: Promise<Metadata>
   setup: AbortController
   session?: Session
+  // Set when the page asked for status and progress messages.
+  reporter?: Reporter
+  // Requests for this URL past their HEAD and range checks and not yet
+  // settled. Its status is `idle` while this is zero.
+  reading: number
 }
 
 /** One HTTP request for a stream URL, from the first await to its last byte. */
@@ -93,6 +110,8 @@ type Job = {
   source?: Source
   session?: Session
   range?: ByteRange
+  // Counted in `source.reading` until the job settles.
+  reading?: boolean
   reader?: Chunks
   controller?: ReadableStreamDefaultController<Uint8Array>
   finish(cancel?: boolean): void
@@ -208,6 +227,9 @@ export function serveStreams(
       const session = sessionFor(client.id, reply)
       source.session = session
       session.sources.add(source)
+      if (reply.events?.length) {
+        source.reporter = createReporter(client, token, reply.events)
+      }
       idle(session)
       // Keep credentials in the session record, never in response metadata.
       const { objectId, sealed, name, mime, size } = reply
@@ -220,6 +242,7 @@ export function serveStreams(
       requests: new Set(),
       ready,
       setup,
+      reading: 0,
     }
     sources.set(sourceKey, source)
     return source
@@ -229,6 +252,7 @@ export function serveStreams(
     if (source.closed) return
     source.closed = true
     sources.delete(source.key)
+    source.reporter?.stop()
     source.setup.abort(new DOMException('Released', 'AbortError'))
     for (const cancel of source.requests) cancel()
     source.session?.sources.delete(source)
@@ -257,7 +281,11 @@ export function serveStreams(
           cancel && reader ? reader.cancel().catch(() => {}) : undefined
         void Promise.resolve(cancellation).finally(() => {
           reader?.releaseLock()
-          job.source?.requests.delete(job.abort)
+          const { source } = job
+          source?.requests.delete(job.abort)
+          if (source && job.reading && --source.reading === 0) {
+            source.reporter?.status('idle')
+          }
           job.session?.jobs.delete(lifetime)
           if (job.session) idle(job.session)
           complete()
@@ -324,11 +352,18 @@ export function serveStreams(
       )
       job.range = range
       const headers = responseHeaders(metadata, range, download)
-      if (
-        request.method === 'HEAD' ||
-        range.status === 416 ||
-        range.length === 0
-      ) {
+      if (request.method === 'HEAD' || range.status === 416) {
+        job.finish()
+        return new Response(null, { status: range.status, headers })
+      }
+      const { reporter } = source
+      job.reading = true
+      // A read that starts while another is already downloading leaves the
+      // status at `downloading`.
+      if (++source.reading === 1) reporter?.status('connecting')
+      // A zero-byte file reports connecting then idle, as a read in the page
+      // does, without starting an SDK download.
+      if (range.length === 0) {
         job.finish()
         return new Response(null, { status: range.status, headers })
       }
@@ -337,7 +372,13 @@ export function serveStreams(
       const object = await objectFor(session, sdk, metadata)
       if (job.closed) return errorResponse(502)
       const chunks: Chunks = sdk
-        .download(object, { offset: range.offset, length: range.length })
+        .download(object, {
+          offset: range.offset,
+          length: range.length,
+          ...(reporter?.wants.shards && {
+            onShardDownloaded: (progress) => reporter.shard(progress),
+          }),
+        })
         .getReader()
       job.reader = chunks
       return new Response(rangeBody(job, chunks, range.length), {
@@ -423,6 +464,9 @@ function rangeBody(job: Job, chunks: Chunks, length: number) {
             throw new Error('Shared file stream exceeded the requested length.')
           }
           controller.enqueue(value)
+          const reporter = job.source?.reporter
+          reporter?.status('downloading')
+          reporter?.bytes(value.byteLength)
           if (remaining === 0) {
             controller.close()
             job.finish(true)
@@ -438,4 +482,82 @@ function rangeBody(job: Job, chunks: Chunks, length: number) {
     },
     { highWaterMark: 0 },
   )
+}
+
+type Reporter = {
+  wants: { shards: boolean }
+  status(status: StreamStatus): void
+  bytes(count: number): void
+  shard(progress: ShardProgress): void
+  stop(): void
+}
+
+/**
+ * Status and progress messages for one stream URL, sent to the page that made
+ * it. Statuses go at once and only when they change. Bytes and shards collect
+ * for REPORT_INTERVAL. After `stop`, every call does nothing, since the SDK
+ * can still report a shard from a download being cancelled.
+ */
+function createReporter(
+  client: StreamClient,
+  token: string,
+  events: StreamEvent[],
+): Reporter {
+  const wants = {
+    status: events.includes('status'),
+    progress: events.includes('progress'),
+    shards: events.includes('shards'),
+  }
+  let stopped = false
+  let current: StreamStatus | undefined
+  let bytes = 0
+  let shards: ShardProgress[] = []
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  function post(message: WorkerMessage) {
+    try {
+      client.postMessage(message)
+    } catch {
+      // The owning tab may already be gone.
+    }
+  }
+  function flush() {
+    clearTimeout(timer)
+    timer = undefined
+    if (stopped || (bytes === 0 && shards.length === 0)) return
+    post({ type: 'sia-stream-progress', token, bytes, shards })
+    bytes = 0
+    shards = []
+  }
+  function schedule() {
+    timer ??= setTimeout(flush, REPORT_INTERVAL)
+  }
+  function status(next: StreamStatus) {
+    if (stopped || next === current) return
+    flush()
+    current = next
+    if (wants.status) post({ type: 'sia-stream-status', token, status: next })
+  }
+
+  return {
+    wants,
+    status,
+    bytes(count) {
+      if (stopped || !wants.progress) return
+      bytes += count
+      schedule()
+    },
+    shard({ hostKey, shardSize, shardIndex, slabIndex, elapsedMs }) {
+      if (stopped) return
+      // Copied field by field, so only plain data crosses to the page.
+      shards.push({ hostKey, shardSize, shardIndex, slabIndex, elapsedMs })
+      schedule()
+    },
+    stop() {
+      stopped = true
+      clearTimeout(timer)
+      timer = undefined
+      shards = []
+    },
+  }
 }

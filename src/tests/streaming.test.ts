@@ -146,18 +146,46 @@ const readAll = (page: Page, url: string) =>
     url,
   )
 
+// The fixture SDK's default chunk, and what it reports one shard read for.
+const CHUNK = 64 * 1024
+
+const tracked = (page: Page) => page.evaluate(() => window.streamTest.tracked())
+
+/** A URL whose status, progress and shard callbacks record into `tracked`. */
+const createTracked = (page: Page, size: number) =>
+  page.evaluate(
+    async (size) => (await window.streamTest.create(size, 'tracked.bin', { tracked: true })).url,
+    size,
+  )
+
+/** Reads the whole URL and returns how long it took, in milliseconds. */
+async function timedRead(page: Page, url: string, size: number) {
+  const { length, ms } = await page.evaluate(async (url) => {
+    const start = performance.now()
+    const bytes = await (await fetch(url)).arrayBuffer()
+    return { length: bytes.byteLength, ms: performance.now() - start }
+  }, url)
+  expect(length).toBe(size)
+  return ms
+}
+
 const pattern = (length: number, offset = 0) =>
   Array.from({ length }, (_, i) => (offset + i) % 251)
 
-async function clickToSave(page: Page, size: number, name: string) {
+async function clickToSave(
+  page: Page,
+  size: number,
+  name: string,
+  { tracked = false } = {},
+) {
   await page.evaluate(
-    ({ size, name }) => {
+    ({ size, name, tracked }) => {
       const button = document.createElement('button')
       button.textContent = 'Save'
-      button.onclick = () => void window.streamTest.save(size, name)
+      button.onclick = () => void window.streamTest.save(size, name, { tracked })
       document.body.append(button)
     },
-    { size, name },
+    { size, name, tracked },
   )
   await page.getByRole('button').click()
 }
@@ -322,6 +350,175 @@ for (const [browserName, engine] of ENGINES) {
         expect(await until(() => errors(page), (value) => value.length > 0)).toEqual([
           'Host disconnected during download',
         ])
+      }))
+
+    test('a URL with event callbacks goes connecting, downloading, idle, with every byte and each chunk read', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        const chunks = 40
+        const size = chunks * CHUNK
+        const url = await createTracked(page, size)
+        const elapsed = await timedRead(page, url, size)
+        const first = await until(() => tracked(page), (value) => value.statuses.length === 3)
+        expect(first.statuses).toEqual(['connecting', 'downloading', 'idle'])
+        expect(first.progress.at(-1)).toBe(size)
+        expect(first.hosts).toHaveLength(chunks)
+        // Bytes collect for 100 ms, so there are no more progress calls than
+        // 100 ms windows in the read, plus the one sent when it ends.
+        expect(first.progress.length).toBeLessThanOrEqual(Math.ceil(elapsed / 100) + 1)
+
+        // A second read of the same URL cycles again, and its bytes add to the total.
+        await timedRead(page, url, size)
+        const second = await until(() => tracked(page), (value) => value.statuses.length === 6)
+        expect(second.statuses).toEqual([
+          'connecting', 'downloading', 'idle', 'connecting', 'downloading', 'idle',
+        ])
+        expect(second.progress.at(-1)).toBe(2 * size)
+        expect(second.hosts).toHaveLength(2 * chunks)
+        expect(await pageDownloads(page)).toBe(0)
+      }))
+
+    test('two reads in flight at once on one URL report one cycle', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        await page.evaluate(() => window.streamTest.configure({ chunkDelay: 20 }))
+        const size = 10 * CHUNK
+        const url = await createTracked(page, size)
+        await page.evaluate(
+          (url) =>
+            Promise.all([
+              fetch(url).then((response) => response.arrayBuffer()),
+              fetch(url, { headers: { Range: 'bytes=0-65535' } }).then((response) =>
+                response.arrayBuffer(),
+              ),
+            ]),
+          url,
+        )
+        const result = await until(() => tracked(page), (value) => value.statuses.at(-1) === 'idle')
+        expect(result.statuses).toEqual(['connecting', 'downloading', 'idle'])
+        expect(result.progress.at(-1)).toBe(size + CHUNK)
+      }))
+
+    test('a HEAD request reports no status or progress', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        const url = await createTracked(page, 3 * CHUNK)
+        expect(
+          await page.evaluate(async (url) => (await fetch(url, { method: 'HEAD' })).status, url),
+        ).toBe(200)
+        await Bun.sleep(300)
+        expect(await tracked(page)).toEqual({ statuses: [], progress: [], hosts: [] })
+        expect((await stats(page)).calls).toEqual([])
+      }))
+
+    test('a read that fails ends idle and reports why', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        await page.evaluate((failAfter) => window.streamTest.configure({ failAfter }), CHUNK)
+        const url = await createTracked(page, 3 * CHUNK)
+        const failed = await page.evaluate(
+          (url) =>
+            fetch(url)
+              .then((response) => response.arrayBuffer())
+              .then(() => false)
+              .catch(() => true),
+          url,
+        )
+        expect(failed).toBe(true)
+        const result = await until(() => tracked(page), (value) => value.statuses.at(-1) === 'idle')
+        expect(result.statuses).toEqual(['connecting', 'downloading', 'idle'])
+        expect(await until(() => errors(page), (value) => value.length > 0)).toEqual([
+          'Host disconnected during download',
+        ])
+      }))
+
+    test('releasing a URL partway through a read stops all of its reports', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        await page.evaluate(() => window.streamTest.configure({ chunkDelay: 50 }))
+        const url = await createTracked(page, 40 * CHUNK)
+        await page.evaluate((url) => {
+          void fetch(url)
+            .then((response) => response.arrayBuffer())
+            .catch(() => {})
+        }, url)
+        await until(() => tracked(page), (value) => value.progress.length > 0)
+        await page.evaluate(() => window.streamTest.releaseOne())
+        const atRelease = await tracked(page)
+        await Bun.sleep(600)
+        const later = await tracked(page)
+        expect(later.statuses).toHaveLength(atRelease.statuses.length)
+        expect(later.progress).toHaveLength(atRelease.progress.length)
+        expect(later.hosts).toHaveLength(atRelease.hosts.length)
+        expect(atRelease.progress.at(-1)!).toBeLessThan(40 * CHUNK)
+      }))
+
+    test('a callback that throws does not stop the stream or the other callbacks', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        const size = 5 * CHUNK
+        const url = await page.evaluate(
+          async (size) =>
+            (await window.streamTest.create(size, 'tracked.bin', { tracked: true, throwing: true }))
+              .url,
+          size,
+        )
+        await timedRead(page, url, size)
+        const result = await until(() => tracked(page), (value) => value.statuses.at(-1) === 'idle')
+        expect(result.statuses).toEqual(['connecting', 'downloading', 'idle'])
+        expect(result.progress.at(-1)).toBe(size)
+        expect(result.hosts).toHaveLength(5)
+      }))
+
+    test('a streamed download reports the cycle and ends at the file size', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        const size = 3 * CHUNK + 17
+        const downloaded = page.waitForEvent('download')
+        await clickToSave(page, size, 'tracked.bin', { tracked: true })
+        const download = await downloaded
+        await download.saveAs(join(downloads, 'tracked.bin'))
+        const result = await until(() => tracked(page), (value) => value.statuses.at(-1) === 'idle')
+        expect(result.statuses).toEqual(['connecting', 'downloading', 'idle'])
+        expect(result.progress.at(-1)).toBe(size)
+        expect(await pageDownloads(page)).toBe(0)
+      }))
+
+    test('a zero-byte file goes connecting then idle without an SDK download', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        const url = await createTracked(page, 0)
+        expect(await readAll(page, url)).toEqual([])
+        const result = await until(() => tracked(page), (value) => value.statuses.at(-1) === 'idle')
+        expect(result).toEqual({ statuses: ['connecting', 'idle'], progress: [], hosts: [] })
+        expect((await stats(page)).calls).toEqual([])
+      }))
+
+    test('a URL with only onStatus gets no progress or shard messages, and the SDK is not asked for shards', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        const size = 5 * CHUNK
+        const url = await page.evaluate(
+          async (size) =>
+            (await window.streamTest.create(size, 'status.bin', { tracked: true, statusOnly: true }))
+              .url,
+          size,
+        )
+        await timedRead(page, url, size)
+        const result = await until(() => tracked(page), (value) => value.statuses.at(-1) === 'idle')
+        expect(result.statuses).toEqual(['connecting', 'downloading', 'idle'])
+        expect(await page.evaluate(() => window.streamTest.progressMessages())).toBe(0)
+        expect((await stats(page)).shardListeners).toBe(0)
+      }))
+
+    test('a URL without event callbacks gets no event messages, and the SDK is not asked for shards', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        const url = await create(page, 300_000)
+        expect((await readAll(page, url)).length).toBe(300_000)
+        await Bun.sleep(300)
+        expect(await page.evaluate(() => window.streamTest.eventMessages())).toBe(0)
+        expect((await stats(page)).shardListeners).toBe(0)
       }))
 
     test('large SDK chunks keep every response byte', () =>
@@ -641,11 +838,34 @@ for (const [browserName, engine] of ENGINES) {
           expect(picker).toEqual({ synchronous: true, saved: 'cancelled' })
           expect(await pageDownloads(page)).toBe(0)
 
+          // The stand-in page SDK throws at once until the fallback is allowed,
+          // as a freed SDK would. The read still ends at idle.
+          const failed = await page.evaluate(() =>
+            window.streamTest
+              .create(100, 'failed.bin', { tracked: true })
+              .then(() => false)
+              .catch(() => true),
+          )
+          expect(failed).toBe(true)
+          expect(await tracked(page)).toEqual({
+            statuses: ['connecting', 'idle'],
+            progress: [],
+            hosts: [],
+          })
+
           await page.evaluate(() => window.streamTest.allowFallback())
-          const file = await page.evaluate(() => window.streamTest.create(100))
+          const file = await page.evaluate(() =>
+            window.streamTest.create(100, 'tracked.bin', { tracked: true }),
+          )
           expect(file.fromPage).toBe(true)
           expect(file.url.startsWith('blob:')).toBe(true)
           expect(await readAll(page, file.url)).toEqual(pattern(100))
+          // Read in the page, the same callbacks report the download.
+          expect(await tracked(page)).toEqual({
+            statuses: ['connecting', 'downloading', 'idle'],
+            progress: [100],
+            hosts: [],
+          })
 
           await page.evaluate(() =>
             Object.defineProperty(window, 'showSaveFilePicker', { value: undefined }),
@@ -657,7 +877,8 @@ for (const [browserName, engine] of ENGINES) {
           const path = join(downloads, 'fallback.bin')
           await download.saveAs(path)
           expect([...readFileSync(path)]).toEqual(pattern(100))
-          expect(await pageDownloads(page)).toBe(2)
+          // The failed start, the preview and the save.
+          expect(await pageDownloads(page)).toBe(3)
         },
         { serviceWorkers: 'block' },
       ))

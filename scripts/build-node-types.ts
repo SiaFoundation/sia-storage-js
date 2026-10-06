@@ -25,10 +25,22 @@ export declare function initSia(): Promise<void>
 export declare function detectPrivateRelay(): Promise<boolean>
 /** Always false. Service worker streaming is for browser pages. */
 export declare function enableStreaming(options?: { workerUrl?: string; scope?: string; type?: 'classic' | 'module' }): Promise<boolean>
+export type StreamStatus = 'connecting' | 'downloading' | 'idle'
+/** The same callbacks browser code passes, so code shared with the browser typechecks. */
+export type FileEvents = {
+  onProgress?: (bytesDownloaded: number) => void
+  onShard?: (progress: ShardProgress) => void
+  onStatus?: (status: StreamStatus) => void
+}
+export type FileOptions = FileEvents & {
+  name: string
+  type?: string
+  onError?: (message: string) => void
+}
 /** For browser pages. In Node, \`url\` and \`download\` reject, and \`sdk.download()\` streams objects directly. */
 export declare function openStreams(sdk: object, credentials: { indexerUrl: string; appMeta: AppMetadata } | { indexerUrl: string; seed: string }): {
-  url(object: PinnedObject, options: { name: string; type?: string }): Promise<never>
-  download(object: PinnedObject, options: { name: string; type?: string }): Promise<never>
+  url(object: PinnedObject, options: FileOptions & { signal?: AbortSignal }): Promise<never>
+  download(object: PinnedObject, options: FileOptions): Promise<never>
   close(): void
 }
 `

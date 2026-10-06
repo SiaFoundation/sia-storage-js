@@ -55,7 +55,7 @@ async function connectShared({
   const sdk = await SharedSdk.connect(indexerUrl, seed)
   return {
     object: ({ objectId }) => sdk.object(objectId),
-    download: (object, range) => sdk.download(object, range),
+    download: (object, options) => sdk.download(object, options),
     free: () => sdk.free(),
   }
 }
@@ -73,7 +73,7 @@ async function connectApp({
     return {
       // The page sent the object sealed with this key, so no lookup is needed.
       object: async ({ sealed }) => PinnedObject.open(key, sealed!),
-      download: (object, range) => sdk.download(object, range),
+      download: (object, options) => sdk.download(object, options),
       free: () => {
         sdk.free()
         key.free()

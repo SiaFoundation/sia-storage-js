@@ -14,6 +14,9 @@ export type FixtureConfig = {
   // Connections to fail before one succeeds.
   failConnects?: number
   failAfter?: number
+  // Milliseconds before each chunk, so reads stay in flight long enough to
+  // overlap or be released partway.
+  chunkDelay?: number
 }
 export type FixtureStats = {
   calls: { offset: number; length: number }[]
@@ -23,6 +26,8 @@ export type FixtureStats = {
   // The kind of each connection, 'shared' or 'app'.
   kinds: string[]
   freed: number
+  // Downloads the worker asked to report shards for.
+  shardListeners: number
 }
 
 const scope = globalThis as unknown as StreamScope
@@ -33,6 +38,7 @@ const stats: FixtureStats = {
   connections: 0,
   kinds: [],
   freed: 0,
+  shardListeners: 0,
 }
 const config: FixtureConfig = { chunkSize: 64 * 1024 }
 
@@ -91,9 +97,18 @@ serveStreams(
       if (!Number.isSafeInteger(size)) throw new Error('Unknown fixture object')
       return { id: () => id, size: () => size, free() {} }
     },
-    download(object: MockObject, range: { offset: number; length: number }) {
+    download(
+      object: MockObject,
+      range: {
+        offset: number
+        length: number
+        onShardDownloaded?: (progress: unknown) => void
+      },
+    ) {
       if (config.failure) throw new Error(config.failure)
       stats.calls.push({ offset: range.offset, length: range.length })
+      if (range.onShardDownloaded) stats.shardListeners++
+      let shard = 0
       let position = range.offset
       let remaining = range.length
       let cancelled = false
@@ -108,6 +123,9 @@ serveStreams(
             }
             // Ten minutes of PCM cannot finish buffering before a seek.
             if (wav) await new Promise((resolve) => setTimeout(resolve, 10))
+            if (config.chunkDelay) {
+              await new Promise((resolve) => setTimeout(resolve, config.chunkDelay))
+            }
             if (cancelled) return
             if (
               config.failAfter !== undefined &&
@@ -122,6 +140,15 @@ serveStreams(
             position += length
             remaining -= length
             stats.produced += length
+            // Stands in for the SDK reporting one shard per chunk.
+            range.onShardDownloaded?.({
+              hostKey: `host-${shard % 3}`,
+              shardSize: length,
+              shardIndex: shard,
+              slabIndex: 0,
+              elapsedMs: 1,
+            })
+            shard++
             controller.enqueue(bytes)
           },
           cancel() {

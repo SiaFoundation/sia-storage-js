@@ -17,7 +17,7 @@ import type {
   SharedSdk,
 } from '../../wasm/sia_storage_wasm.js'
 import { reportStreamError, streamErrorMessage } from './errors'
-import { readBlob, saveToDisk } from './fallback'
+import { type FileEvents, notify, readBlob, saveToDisk } from './fallback'
 import {
   type ClientReply,
   type Connection,
@@ -25,9 +25,13 @@ import {
   type PageMessage,
   requestReply,
   type SourceReply,
+  type StreamEvent,
   streamPath,
   type WorkerMessage,
 } from './protocol'
+
+export type { FileEvents } from './fallback'
+export type { StreamStatus } from './protocol'
 
 export type StreamingOptions = {
   /** Where the site serves the worker file. Defaults to `/sia-storage-sw.js`. */
@@ -49,15 +53,13 @@ export type CredentialsFor<S extends Sdk | SharedSdk> = S extends SharedSdk
   ? SharedCredentials
   : AppCredentials
 
-export type FileOptions = {
+export type FileOptions = FileEvents & {
   /** Used for downloads and for the browser's media handling. */
   name: string
   /** The MIME type. Defaults to `application/octet-stream`. */
   type?: string
   /** A failure after streaming started. Without it, failures are logged. */
   onError?: (message: string) => void
-  /** Bytes read so far, when the page reads the object itself. */
-  onProgress?: (bytesDownloaded: number) => void
 }
 
 /** A URL for an `<img>`, `<video>`, `<audio>`, `<iframe>` or `fetch`. */
@@ -105,6 +107,9 @@ type StreamEntry = {
   name: string
   mime: string
   onError: ((message: string) => void) | undefined
+  events: FileEvents
+  // Bytes reported for this URL so far, across all of its range requests.
+  received: number
 }
 
 /**
@@ -235,7 +240,7 @@ export function openStreams<S extends Sdk | SharedSdk>(
         sdk,
         object,
         options.type,
-        options.onProgress ?? (() => {}),
+        options,
         options.signal ?? new AbortController().signal,
       )
       const url = URL.createObjectURL(blob)
@@ -259,7 +264,7 @@ export function openStreams<S extends Sdk | SharedSdk>(
         object,
         options.name,
         options.type,
-        options.onProgress ?? (() => {}),
+        options,
       )
       return saved ? 'saved' : 'cancelled'
     },
@@ -306,7 +311,7 @@ function toHex(bytes: Uint8Array) {
 function streamUrl(
   handle: Opened,
   object: PinnedObject,
-  { name, type, onError }: FileOptions,
+  { name, type, onError, onProgress, onShard, onStatus }: FileOptions,
 ): StreamedFile | undefined {
   if (!worker || !navigator.serviceWorker.controller || !opened.has(handle)) {
     return undefined
@@ -320,6 +325,8 @@ function streamUrl(
     name,
     mime: type || 'application/octet-stream',
     onError,
+    events: { onProgress, onShard, onStatus },
+    received: 0,
   })
   return {
     url: streamPath(worker.scope, worker.clientId, token),
@@ -356,10 +363,26 @@ function onWorkerMessage(event: MessageEvent) {
         : undefined
     if (entry.onError) entry.onError(streamErrorMessage(data.message))
     else reportStreamError(data.message, entry.name, range)
+  } else if (data?.type === 'sia-stream-status') {
+    notify(entries.get(data.token)?.events.onStatus, data.status)
+  } else if (data?.type === 'sia-stream-progress') {
+    const entry = entries.get(data.token)
+    // The worker can come from a different deploy, so its fields are checked.
+    if (!entry || !Array.isArray(data.shards)) return
+    const { onProgress, onShard } = entry.events
+    for (const shard of data.shards) notify(onShard, shard)
+    if (Number.isSafeInteger(data.bytes) && data.bytes > 0) {
+      entry.received += data.bytes
+      notify(onProgress, entry.received)
+    }
   } else if (data?.type === 'sia-source') {
     const port = event.ports[0]
     if (!port) return
     const entry = entries.get(data.token)
+    const events: StreamEvent[] = []
+    if (entry?.events.onStatus) events.push('status')
+    if (entry?.events.onProgress) events.push('progress')
+    if (entry?.events.onShard) events.push('shards')
     const reply: SourceReply =
       entry
         ? {
@@ -371,6 +394,7 @@ function onWorkerMessage(event: MessageEvent) {
             size: entry.size,
             mime: entry.mime,
             name: entry.name,
+            ...(events.length > 0 && { events }),
           }
         : { type: 'error' }
     port.postMessage(reply)
