@@ -80,10 +80,39 @@ export async function setup(workerUrl: string, kind: 'shared' | 'app' = 'shared'
   let releaseOne = () => {}
   const errors: string[] = []
   const onError = (message: string) => errors.push(message)
+  // What the last URL or download made with `track` reported.
+  let tracked = { statuses: [] as string[], progress: [] as number[], hosts: [] as string[] }
+  // The event callbacks, recording into a fresh `tracked`. With `throwing`,
+  // onShard throws after recording, as a buggy app callback would. With
+  // `statusOnly`, only onStatus is passed.
+  const track = (throwing = false, statusOnly = false) => {
+    const record = { statuses: [] as string[], progress: [] as number[], hosts: [] as string[] }
+    tracked = record
+    const onStatus = (status: string) => void record.statuses.push(status)
+    if (statusOnly) return { onStatus }
+    return {
+      onStatus,
+      onProgress: (bytes: number) => void record.progress.push(bytes),
+      onShard: (shard: { hostKey: string }) => {
+        record.hosts.push(shard.hostKey)
+        if (throwing) throw new Error('App callback failed')
+      },
+    }
+  }
+  // Status and progress messages the page received, for any URL.
+  const messages = { status: 0, progress: 0 }
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const type = (event.data as { type?: string } | null)?.type
+    if (type === 'sia-stream-status') messages.status++
+    if (type === 'sia-stream-progress') messages.progress++
+  })
   return {
     ready,
     errors,
     pageDownloads: () => pageDownloads,
+    tracked: () => tracked,
+    eventMessages: () => messages.status + messages.progress,
+    progressMessages: () => messages.progress,
     stats: () => rpc(),
     configure: (config: FixtureConfig) => rpc(config),
     allowFallback: () => {
@@ -93,12 +122,13 @@ export async function setup(workerUrl: string, kind: 'shared' | 'app' = 'shared'
     async create(
       size: number,
       name = 'generated.bin',
-      { wav = false, logged = false } = {},
+      { wav = false, logged = false, tracked = false, throwing = false, statusOnly = false } = {},
     ) {
       const file = await streams.url(object(size, wav), {
         name,
         type: wav ? 'audio/wav' : 'application/octet-stream',
         ...(!logged && { onError }),
+        ...(tracked && track(throwing, statusOnly)),
       })
       releaseOne = file.release
       return { url: file.url, fromPage: file.blob !== undefined }
@@ -112,11 +142,12 @@ export async function setup(workerUrl: string, kind: 'shared' | 'app' = 'shared'
       other.close()
       return file.url
     },
-    save: (size: number, name: string) =>
+    save: (size: number, name: string, { tracked = false } = {}) =>
       streams.download(object(size), {
         name,
         type: 'application/octet-stream',
         onError,
+        ...(tracked && track()),
       }),
   }
 }

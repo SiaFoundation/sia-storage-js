@@ -4,7 +4,32 @@
  * file in memory as a Blob. A download writes straight to disk through the
  * save picker where the browser has one, and buffers a Blob where it does not.
  */
-import type { PinnedObject, Sdk, SharedSdk } from '../../wasm/sia_storage_wasm.js'
+import type {
+  PinnedObject,
+  Sdk,
+  SharedSdk,
+  ShardProgress,
+} from '../../wasm/sia_storage_wasm.js'
+import type { StreamStatus } from './protocol'
+
+/** What a file reports while it downloads, on the worker or in the page. */
+export type FileEvents = {
+  /**
+   * Total bytes this URL has received. It is a transfer count, not how much of
+   * the file is held: a range read again after a seek counts again, so it can
+   * pass the file size, and a new URL for the same file starts from zero. For
+   * how much of a video is buffered, read the media element's `buffered`.
+   */
+  onProgress?: (bytesDownloaded: number) => void
+  /**
+   * One call per piece the SDK read from a host. A download reads each slab in
+   * chunks, so the same slab and shard come again for every chunk, and only
+   * the first `minShards` hosts to answer for a chunk are reported.
+   */
+  onShard?: (progress: ShardProgress) => void
+  /** Each change of what the URL is doing. See `StreamStatus`. */
+  onStatus?: (status: StreamStatus) => void
+}
 
 type AnySdk = Pick<Sdk | SharedSdk, 'download'>
 
@@ -20,29 +45,73 @@ function chunks(stream: ReadableStream): ReadableStreamDefaultReader<Chunk> {
   return stream.getReader() as ReadableStreamDefaultReader<Chunk>
 }
 
+/**
+ * Calls an app's callback. One that throws is reported to the console rather
+ * than ending the download or skipping the callbacks after it.
+ */
+export function notify<T>(callback: ((value: T) => void) | undefined, value: T) {
+  if (!callback) return
+  try {
+    callback(value)
+  } catch (error) {
+    reportError(error)
+  }
+}
+
+// Asks the SDK for shard reports only when someone listens for them.
+function download(sdk: AnySdk, object: PinnedObject, events: FileEvents) {
+  const { onShard } = events
+  return sdk.download(
+    object,
+    onShard
+      ? { onShardDownloaded: (shard: ShardProgress) => notify(onShard, shard) }
+      : {},
+  )
+}
+
+// The status cycle the worker reports for a stream URL, for a read in the page.
+function track({ onProgress, onStatus }: FileEvents) {
+  let received = 0
+  let started = false
+  notify(onStatus, 'connecting')
+  return {
+    chunk(length: number) {
+      if (!started) notify(onStatus, 'downloading')
+      started = true
+      received += length
+      notify(onProgress, received)
+    },
+    end() {
+      notify(onStatus, 'idle')
+    },
+  }
+}
+
 /** The whole object as a Blob, stopping early when `signal` aborts. */
 export async function readBlob(
   sdk: AnySdk,
   object: PinnedObject,
   type: string | undefined,
-  onProgress: (bytesDownloaded: number) => void,
+  events: FileEvents,
   signal: AbortSignal,
 ) {
-  const reader = chunks(sdk.download(object))
-  const onAbort = () => void reader.cancel()
+  const progress = track(events)
+  let reader: ReadableStreamDefaultReader<Chunk> | undefined
+  const onAbort = () => void reader?.cancel()
   signal.addEventListener('abort', onAbort)
   const parts: Chunk[] = []
-  let bytesDownloaded = 0
   try {
+    // Inside the try, so a download that fails to start still reports idle.
+    reader = chunks(download(sdk, object, events))
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       parts.push(value)
-      bytesDownloaded += value.length
-      onProgress(bytesDownloaded)
+      progress.chunk(value.length)
     }
   } finally {
     signal.removeEventListener('abort', onAbort)
+    progress.end()
   }
   signal.throwIfAborted()
   return new Blob(parts, type ? { type } : {})
@@ -64,7 +133,7 @@ export async function saveToDisk(
   object: PinnedObject,
   name: string,
   type: string | undefined,
-  onProgress: (bytesDownloaded: number) => void,
+  events: FileEvents,
 ) {
   const picker = (window as { showSaveFilePicker?: SavePicker })
     .showSaveFilePicker
@@ -73,7 +142,7 @@ export async function saveToDisk(
       sdk,
       object,
       type,
-      onProgress,
+      events,
       new AbortController().signal,
     )
     saveBlob(blob, name)
@@ -89,17 +158,20 @@ export async function saveToDisk(
     if (e instanceof DOMException && e.name === 'AbortError') return false
     throw e
   }
-  let bytesDownloaded = 0
-  const progress = new TransformStream<Chunk, Chunk>({
+  const file = await handle.createWritable()
+  const progress = track(events)
+  const counter = new TransformStream<Chunk, Chunk>({
     transform(chunk, controller) {
-      bytesDownloaded += chunk.length
-      onProgress(bytesDownloaded)
+      progress.chunk(chunk.length)
       controller.enqueue(chunk)
     },
   })
-  const file = await handle.createWritable()
-  await (sdk.download(object) as ReadableStream<Chunk>)
-    .pipeThrough(progress)
-    .pipeTo(file)
+  try {
+    await (download(sdk, object, events) as ReadableStream<Chunk>)
+      .pipeThrough(counter)
+      .pipeTo(file)
+  } finally {
+    progress.end()
+  }
   return true
 }

@@ -7,9 +7,11 @@ export { enableStreaming, openStreams } from './stream/page'
 export type {
   AppCredentials,
   CredentialsFor,
+  FileEvents,
   FileOptions,
   SharedCredentials,
   StreamedFile,
+  StreamStatus,
   Streams,
   StreamingOptions,
 } from './stream/page'

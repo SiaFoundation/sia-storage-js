@@ -10,7 +10,21 @@
 import type {
   AppMetadata,
   SealedObject,
+  ShardProgress,
 } from '../../wasm/sia_storage_wasm.js'
+
+/**
+ * What a stream URL is doing. `connecting` is a request waiting for its first
+ * bytes, which on the URL's first request includes the worker connecting its
+ * SDK and finding the object. `downloading` means bytes are arriving. `idle`
+ * means no request for the URL is in flight, after the last one finished, was
+ * cancelled or failed.
+ */
+export type StreamStatus = 'connecting' | 'downloading' | 'idle'
+
+/** The reports a page can ask for, one per callback it was given. */
+export type StreamEvent = 'status' | 'progress' | 'shards'
+const STREAM_EVENTS: readonly unknown[] = ['status', 'progress', 'shards']
 
 /**
  * What the worker connects its own SDK with. A `SharedSdk` reconnects from its
@@ -31,6 +45,9 @@ export type SourceDetails = {
   name: string
   mime: string
   size: number
+  // The reports the page wants for this URL. The worker sends no others, and
+  // asks the SDK for shard reports only when `shards` is here.
+  events?: StreamEvent[]
 }
 
 /** Page to worker. */
@@ -48,6 +65,14 @@ export type WorkerMessage =
       message: string
       offset?: number
       length?: number
+    }
+  | { type: 'sia-stream-status'; token: string; status: StreamStatus }
+  | {
+      type: 'sia-stream-progress'
+      token: string
+      // Bytes served since the previous progress message.
+      bytes: number
+      shards: ShardProgress[]
     }
 
 /** The worker's answer to `sia-client`. */
@@ -104,7 +129,10 @@ export function isSourceReply(
     (data.connection.kind === 'shared' ||
       (typeof data.sealed === 'object' && data.sealed !== null)) &&
     Number.isSafeInteger(data.size) &&
-    (data.size as number) >= 0
+    (data.size as number) >= 0 &&
+    (data.events === undefined ||
+      (Array.isArray(data.events) &&
+        data.events.every((event) => STREAM_EVENTS.includes(event))))
   )
 }
 

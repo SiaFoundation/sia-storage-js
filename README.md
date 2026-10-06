@@ -96,6 +96,26 @@ button.onclick = () => streams.download(object, { name: 'clip.mp4' })
 streams.close()
 ```
 
+### Status and progress
+
+`url()` and `download()` take three optional callbacks, for a loading state, a progress readout or a map of the hosts serving the file. They work the same whether the worker streams the file or the page reads it itself.
+
+```ts
+const video = await streams.url(object, {
+  name: 'clip.mp4',
+  type: 'video/mp4',
+  onStatus: (status) => setStatus(status),
+  onProgress: (bytes) => setReceived(bytes),
+  onShard: (shard) => markHost(shard.hostKey, shard.slabIndex),
+})
+```
+
+- **`onStatus`** goes `connecting`, `downloading`, `idle`, and around again for each new read, such as a seek. `connecting` lasts until the first bytes arrive, and on the URL's first read it covers the worker connecting to the indexer. `idle` means no read is in flight, after the last one finished, was cancelled or failed.
+- **`onProgress`** is the total bytes the URL has received. It counts transfer, not coverage: a range read again after a seek counts again, so it can pass the file size, and a new URL for the same file starts from zero. For how much of a video is buffered, use the media element's `buffered`. A `download()` reads the file once, so its total ends at the file size.
+- **`onShard`** is called for each piece the SDK reads from a host: the host key, slab, shard index, bytes read and time taken. A slab is read in chunks, so the same shard comes up once per chunk.
+
+A URL without these callbacks costs nothing, and one with only some of them gets only those reports. The worker sends bytes and shards in batches, at most every 100 ms and just before each status change, and stops when the URL is released. A callback that throws is reported to the console and does not stop the stream or the other callbacks.
+
 ### Serve the worker
 
 The worker is one file, `sia-storage-sw.js`, served from your site's root. Use the line for your setup.
