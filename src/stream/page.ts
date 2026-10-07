@@ -9,13 +9,13 @@
  * Where the worker is unavailable, the same calls read the object in the page.
  */
 import type {
-  AppKey,
   AppMetadata,
   PinnedObject,
   SealedObject,
   Sdk,
   SharedSdk,
 } from '../../wasm/sia_storage_wasm.js'
+import { AppKey } from '../wasm'
 import { reportStreamError, streamErrorMessage } from './errors'
 import { type FileEvents, notify, readBlob, saveToDisk } from './fallback'
 import {
@@ -115,8 +115,13 @@ type StreamEntry = {
 /**
  * One `openStreams` call, and how the worker reconnects its SDK. Each call gets
  * its own session, so closing one handle leaves another on the same SDK open.
+ *
+ * `sealKey` seals each object the page streams, so the worker opens it instead
+ * of asking the indexer for it again. An `Sdk`'s is a copy of its app key. A
+ * `SharedSdk` has none, so it gets a random key that only this page and its
+ * worker see. Either is freed on close.
  */
-type Opened = { session: string; connection: Connection; appKey?: AppKey }
+type Opened = { session: string; connection: Connection; sealKey?: AppKey }
 
 const entries = new Map<string, StreamEntry>()
 const opened = new Set<Opened>()
@@ -296,12 +301,35 @@ function openedFor(sdk: Sdk | SharedSdk, credentials: unknown): Opened {
       appKey: toHex(appKey.export()),
       appMeta,
     }
-    return { session, connection, appKey }
+    return { session, connection, sealKey: appKey }
   }
   if (typeof indexerUrl !== 'string' || typeof seed !== 'string') {
     throw new TypeError('openStreams(SharedSdk) needs { indexerUrl, seed }.')
   }
-  return { session, connection: { kind: 'shared', indexerUrl, seed } }
+  const sealing = randomSealKey()
+  return {
+    session,
+    connection: {
+      kind: 'shared',
+      indexerUrl,
+      seed,
+      ...(sealing && { sealKey: sealing.hex }),
+    },
+    ...(sealing && { sealKey: sealing.key }),
+  }
+}
+
+/**
+ * Undefined when the SDK's WebAssembly is not running, which a page holding a
+ * connected `SharedSdk` has always started. The worker then looks objects up.
+ */
+function randomSealKey() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  try {
+    return { key: new AppKey(bytes), hex: toHex(bytes) }
+  } catch {
+    return undefined
+  }
 }
 
 function toHex(bytes: Uint8Array) {
@@ -320,7 +348,7 @@ function streamUrl(
   entries.set(token, {
     handle,
     objectId: object.id(),
-    sealed: handle.appKey && object.seal(handle.appKey),
+    sealed: handle.sealKey && object.seal(handle.sealKey),
     size: object.size(),
     name,
     mime: type || 'application/octet-stream',
@@ -343,6 +371,7 @@ function releaseStreams(handle: Opened) {
     if (entry.handle === handle) entries.delete(token)
   }
   if (!opened.delete(handle)) return
+  handle.sealKey?.free()
   const message = {
     type: 'sia-release-share',
     session: handle.session,
