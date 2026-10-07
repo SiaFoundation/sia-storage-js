@@ -9,3 +9,4 @@ src/node/napi.generated.d.ts
 .npmrc
 .claude/
 test-app/
+bench/results/
