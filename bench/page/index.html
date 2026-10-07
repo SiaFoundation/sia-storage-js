@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Streaming benchmark</title>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    color: #ddd;
+    font: 14px system-ui;
+  }
+  video {
+    display: block;
+    width: 100vw;
+    height: 80vh;
+    background: #000;
+  }
+</style>
+<video id="video" controls playsinline autoplay></video>
+<button id="play" disabled>Play</button>
+<span id="state">starting</span>
+<script type="module" src="/bench/page/main.js"></script>

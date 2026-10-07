@@ -1,0 +1,182 @@
+name: Benchmark
+
+# Plays shared videos in Google Chrome through two builds of the SDK, against
+# the production indexer and hosts, and reports how they compare. Both builds
+# run in one benchmark, a round at a time, so each round plays the same video
+# on both within a few minutes.
+#
+# On a pull request it runs when the `benchmark` label is added, compares the
+# base branch with the pull request, comments the report, and removes the
+# label, so adding it again runs it again.
+#
+# Run by hand, it compares the default branch, or a pull request's base, with
+# the branch it runs on or the pull request. `sia_sdk_rs_ref` builds the second
+# side from another sia-sdk-rs branch, tag or full commit SHA, to measure a
+# Rust change. Without `pr` the report goes to the run's summary.
+#
+# Needs the repository secret BENCH_SHARE_SEED, a sharing key's seed. Each
+# round plays a video picked at random from that key's share, or the video
+# named by the optional secret BENCH_FILE_ID. Every byte read is billed to the
+# key's owner, up to about 60 MB per play and 4 plays per round.
+#
+# The benchmark step runs the pull request's own code with that seed, so a
+# pull request from a fork is refused, and only the steps that need the seed
+# or the token are given them.
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to benchmark and comment on. Empty compares the branch this runs on with the default branch.
+        required: false
+        type: string
+      sia_sdk_rs_ref:
+        description: sia-sdk-rs branch, tag or full commit SHA to build the second side from, instead of the version in .sia-sdk-rs.json.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: benchmark-${{ github.event.pull_request.number || inputs.pr || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'benchmark'
+    # Google Chrome comes installed. Playwright's own Chromium cannot decode
+    # H.264, which most shared video is.
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+      RUST_REF: ${{ inputs.sia_sdk_rs_ref }}
+    steps:
+      - name: Find the two sides
+        id: sides
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ -n "$PR" ]; then
+            case "$PR" in *[!0-9]*) echo "pr must be a number" >&2; exit 1 ;; esac
+            pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR")
+            if [ "$(jq -r .head.repo.full_name <<<"$pull")" != "$GITHUB_REPOSITORY" ]; then
+              echo "Pull request $PR is from a fork, and the benchmark does not run a fork's code." >&2
+              exit 1
+            fi
+            jq -r '"head=\(.head.sha)\nbase=\(.base.sha)\nbase_name=\(.base.ref)\nhead_name=\(.head.ref)"' <<<"$pull" >> "$GITHUB_OUTPUT"
+          else
+            { echo "head=$GITHUB_SHA"; echo "base=$DEFAULT_BRANCH"; echo "base_name=$DEFAULT_BRANCH"; echo "head_name=$GITHUB_REF_NAME"; } >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ steps.sides.outputs.head }}
+          persist-credentials: false
+
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ steps.sides.outputs.base }}
+          path: base
+          persist-credentials: false
+
+      # The comment from an earlier run holds numbers for an older commit, so
+      # it is replaced as soon as this run starts, not only when it ends.
+      - name: Say the benchmark is running
+        if: env.PR != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.sides.outputs.head }}
+        run: |
+          printf '%s\n### Streaming benchmark\n\nRunning on %s. Its results replace this comment in about 20 minutes. See [run %s](%s/%s/actions/runs/%s).\n' \
+            '<!-- sia-storage-bench -->' "${HEAD_SHA:0:7}" "$GITHUB_RUN_ID" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > running.md
+          bench/post-comment.sh running.md
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # A fetch by name takes a branch or a tag, and GitHub also serves a full
+      # commit SHA this way, which `git clone --branch` does not accept.
+      - name: Fetch the Rust SDK for each side
+        run: |
+          fetch() {
+            git init -q "$1"
+            git -C "$1" fetch -q --depth 1 https://github.com/SiaFoundation/sia-sdk-rs.git "$2"
+            git -C "$1" checkout -q FETCH_HEAD
+          }
+          fetch base/rust/sia-sdk-rs "$(jq -r .napi base/.sia-sdk-rs.json)"
+          fetch rust/sia-sdk-rs "${RUST_REF:-$(jq -r .napi .sia-sdk-rs.json)}"
+
+      - name: Cache Rust target + registry
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: |
+            rust/sia-sdk-rs
+            base/rust/sia-sdk-rs
+          shared-key: benchmark-wasm
+
+      # The browser bundles only. The Node addon is not needed to play a
+      # video in a page.
+      - name: Build both SDKs
+        run: |
+          for dir in . base; do
+            (cd "$dir" && bun install --frozen-lockfile && bun run build-wasm && bunx tsup --config tsup.worker.config.ts && bunx tsup)
+          done
+
+      # The runner and page come from the second side, so both builds are
+      # measured the same way.
+      - name: Benchmark
+        env:
+          BENCH_SHARE_SEED: ${{ secrets.BENCH_SHARE_SEED }}
+          BENCH_FILE_ID: ${{ secrets.BENCH_FILE_ID }}
+        run: bun run bench --rounds 5 --window 30 --budget-mb 60 --warm --base base --out results/bench.json
+
+      - name: Write the report
+        env:
+          BASE_NAME: ${{ steps.sides.outputs.base_name }}
+          HEAD_NAME: ${{ steps.sides.outputs.head_name }}
+          HEAD_SHA: ${{ steps.sides.outputs.head }}
+        run: |
+          bun run bench/report.ts --results results/bench.json \
+            --base-name "$BASE_NAME" --head-name "$HEAD_NAME" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --sha "$HEAD_SHA" --rust-ref "$RUST_REF" \
+            --out comment.md
+
+      - name: Post the report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f comment.md ]; then
+            printf '%s\n### Streaming benchmark\n\nThe benchmark did not finish. See [run %s](%s/%s/actions/runs/%s).\n' \
+              '<!-- sia-storage-bench -->' "$GITHUB_RUN_ID" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > comment.md
+          fi
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$PR" ]; then bench/post-comment.sh comment.md; fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: benchmark-results
+          path: results/
+          if-no-files-found: ignore
+
+      - name: Remove the label, so adding it again runs again
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label benchmark
