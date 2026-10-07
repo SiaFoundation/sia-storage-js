@@ -28,6 +28,10 @@ export type FixtureStats = {
   freed: number
   // Downloads the worker asked to report shards for.
   shardListeners: number
+  // Objects the worker had to look up by id, because none came sealed.
+  lookups: number
+  // Shared connections that came with a key to open sealed objects.
+  sealKeys: number
 }
 
 const scope = globalThis as unknown as StreamScope
@@ -39,6 +43,8 @@ const stats: FixtureStats = {
   kinds: [],
   freed: 0,
   shardListeners: 0,
+  lookups: 0,
+  sealKeys: 0,
 }
 const config: FixtureConfig = { chunkSize: 64 * 1024 }
 
@@ -78,6 +84,7 @@ serveStreams(
   async (connection) => {
   stats.connections++
   stats.kinds.push(connection.kind)
+  if (connection.kind === 'shared' && connection.sealKey) stats.sealKeys++
   // The bridge's stand-in Sdk exports a key of 32 sevens.
   if (connection.kind === 'app' && connection.appKey !== '07'.repeat(32)) {
     throw new Error('Unexpected app key')
@@ -88,11 +95,10 @@ serveStreams(
   }
   return {
     async object({ objectId, sealed }: ObjectRef): Promise<MockObject> {
-      // An Sdk's objects arrive sealed. The bridge's stand-in seal is the id.
-      const id =
-        connection.kind === 'app'
-          ? (sealed as unknown as { id: string }).id
-          : objectId
+      // Objects arrive sealed when the page could seal them. The bridge's
+      // stand-in seal is the id.
+      if (!sealed) stats.lookups++
+      const id = sealed ? (sealed as unknown as { id: string }).id : objectId
       const size = Number(id.split(':')[1])
       if (!Number.isSafeInteger(size)) throw new Error('Unknown fixture object')
       return { id: () => id, size: () => size, free() {} }

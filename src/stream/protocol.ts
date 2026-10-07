@@ -29,9 +29,11 @@ const STREAM_EVENTS: readonly unknown[] = ['status', 'progress', 'shards']
 /**
  * What the worker connects its own SDK with. A `SharedSdk` reconnects from its
  * sharing key's seed, and an `Sdk` from its app key, as hex, and app metadata.
+ * A `SharedSdk`'s `sealKey` is the hex of the random key the page seals its
+ * objects with. A page from before it existed sends none.
  */
 export type Connection =
-  | { kind: 'shared'; indexerUrl: string; seed: string }
+  | { kind: 'shared'; indexerUrl: string; seed: string; sealKey?: string }
   | { kind: 'app'; indexerUrl: string; appKey: string; appMeta: AppMetadata }
 
 export type SourceDetails = {
@@ -39,8 +41,9 @@ export type SourceDetails = {
   session: string
   connection: Connection
   objectId: string
-  // An `Sdk`'s object, sealed with its app key, so the worker can open it
-  // without a lookup. A `SharedSdk`'s object is looked up by `objectId`.
+  // The object, sealed with its app key or the share's `sealKey`, so the
+  // worker can open it without a lookup. Without it the worker looks the
+  // object up by `objectId`.
   sealed?: SealedObject
   name: string
   mime: string
@@ -108,9 +111,18 @@ export function isAppMetadata(value: unknown): value is AppMetadata {
   return strings(value as Fields, ['appId', 'name', 'description', 'serviceUrl'])
 }
 
+// 32 bytes as hex, which is what the worker builds an AppKey from.
+const isKeyHex = (value: unknown) =>
+  typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value)
+
 function isConnection(value: unknown): value is Connection {
   const data = value as Fields
-  if (data?.kind === 'shared') return strings(data, ['indexerUrl', 'seed'])
+  if (data?.kind === 'shared') {
+    return (
+      strings(data, ['indexerUrl', 'seed']) &&
+      (data.sealKey === undefined || isKeyHex(data.sealKey))
+    )
+  }
   return (
     data?.kind === 'app' &&
     strings(data, ['indexerUrl', 'appKey']) &&

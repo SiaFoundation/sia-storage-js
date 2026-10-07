@@ -107,6 +107,47 @@ test.each([
   ['chromium', chromium],
   ['firefox', firefox],
   ['webkit', webkit],
+] as const)('%s: the prebuilt worker opens a shared file the page sealed, without looking it up', async (_, engine) => {
+  indexerPaths.length = 0
+  const browser = await engine.launch()
+  try {
+    const page = await browser.newPage()
+    await page.goto(`http://127.0.0.1:${site.port}/`)
+    const message = await page.evaluate(
+      async ({ indexerUrl }) => {
+        const { initSia, openStreams, PinnedObject } = await import('/dist/index.js' as string)
+        await initSia()
+        // A real object, so the worker has a real sealed record to open. It
+        // has no data, so the read after opening it fails, which ends the test.
+        const real = new PinnedObject()
+        const object = {
+          id: () => real.id(),
+          size: () => 100,
+          seal: (key: unknown) => real.seal(key),
+        }
+        const streams = openStreams({}, { indexerUrl, seed: 'ab'.repeat(32) })
+        return new Promise<string>((resolve) =>
+          streams.url(object, { name: 'sealed.bin', onError: resolve }).then(
+            ({ url }: { url: string }) => fetch(url).catch(() => {}),
+          ),
+        )
+      },
+      { indexerUrl: `http://127.0.0.1:${indexer.port}` },
+    )
+    // The worker connected, then read the file from the sealed record. A
+    // lookup would have asked the indexer for /shared/objects/<id>.
+    expect(indexerPaths).toContain('/shared/hosts')
+    expect(indexerPaths.filter((path) => path.startsWith('/shared/objects'))).toEqual([])
+    expect(message).not.toContain('the fake indexer has no')
+  } finally {
+    await browser.close()
+  }
+})
+
+test.each([
+  ['chromium', chromium],
+  ['firefox', firefox],
+  ['webkit', webkit],
 ] as const)('%s: the prebuilt worker connects an app Sdk with its app key', async (_, engine) => {
   indexerPaths.length = 0
   const browser = await engine.launch()
