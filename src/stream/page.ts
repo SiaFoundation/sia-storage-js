@@ -67,6 +67,16 @@ export type StreamedFile = {
   url: string
   /** The whole file, when the page read it itself instead of streaming. */
   blob?: Blob
+  /**
+   * Opens connections to the hosts holding the start of the file, so a play
+   * that follows gets its first bytes sooner. It reads one byte, which asks
+   * each host of the first slab for a single 64-byte segment, and reports no
+   * status or progress. Resolves when the byte arrives, or at once for a file
+   * the page read itself. Never rejects, since a play still works without it.
+   * Call it when a play is likely, such as when the pointer reaches a Play
+   * button. The earlier before the play, the more it saves.
+   */
+  warm(): Promise<void>
   /** Frees the URL. Call it when the element showing it goes away. */
   release(): void
 }
@@ -249,7 +259,12 @@ export function openStreams<S extends Sdk | SharedSdk>(
         options.signal ?? new AbortController().signal,
       )
       const url = URL.createObjectURL(blob)
-      return { url, blob, release: () => URL.revokeObjectURL(url) }
+      return {
+        url,
+        blob,
+        warm: async () => {},
+        release: () => URL.revokeObjectURL(url),
+      }
     },
     async download(object, options) {
       const stream = streamUrl(handle, object, options)
@@ -356,8 +371,19 @@ function streamUrl(
     events: { onProgress, onShard, onStatus },
     received: 0,
   })
+  const url = streamPath(worker.scope, worker.clientId, token)
   return {
-    url: streamPath(worker.scope, worker.clientId, token),
+    url,
+    async warm() {
+      try {
+        const response = await fetch(`${url}?warm=1`, {
+          headers: { Range: 'bytes=0-0' },
+        })
+        await response.arrayBuffer()
+      } catch {
+        // A play after a failed warm-up connects as it would have anyway.
+      }
+    },
     release() {
       entries.delete(token)
       const message = { type: 'sia-release', token } satisfies PageMessage

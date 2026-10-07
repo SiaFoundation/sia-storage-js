@@ -112,6 +112,8 @@ type Job = {
   range?: ByteRange
   // Counted in `source.reading` until the job settles.
   reading?: boolean
+  // A warm-up read, which reports nothing to the page.
+  quiet?: boolean
   reader?: Chunks
   controller?: ReadableStreamDefaultController<Uint8Array>
   finish(cancel?: boolean): void
@@ -301,7 +303,9 @@ export function serveStreams(
         const message = streamErrorMessage(error)
         const aborted = error instanceof Error && error.name === 'AbortError'
         const { source, range } = job
-        if (!aborted && source && !source.closed) {
+        // A warm-up is invisible to the page, failures included. The play
+        // that follows connects again and reports its own failure.
+        if (!aborted && !job.quiet && source && !source.closed) {
           // Diagnostics go only to the owning page. Never log SDK objects here.
           try {
             source.client.postMessage({
@@ -325,13 +329,14 @@ export function serveStreams(
     request: Request,
     clientId: string,
     token: string,
-    download: boolean,
+    { download, warm }: { download: boolean; warm: boolean },
   ): Promise<Response> {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return errorResponse(405)
     }
     if (!supportsDownloads) return errorResponse(503)
     const job = startJob(request, token)
+    job.quiet = warm
     try {
       const client = await scope.clients.get(clientId)
       if (!client || request.signal.aborted) return errorResponse(404)
@@ -356,11 +361,13 @@ export function serveStreams(
         job.finish()
         return new Response(null, { status: range.status, headers })
       }
-      const { reporter } = source
-      job.reading = true
+      // A warm-up is invisible to the page, so a player that warms a file
+      // does not see it go connecting and downloading before Play.
+      const reporter = warm ? undefined : source.reporter
+      job.reading = !warm
       // A read that starts while another is already downloading leaves the
       // status at `downloading`.
-      if (++source.reading === 1) reporter?.status('connecting')
+      if (!warm && ++source.reading === 1) reporter?.status('connecting')
       // A zero-byte file reports connecting then idle, as a read in the page
       // does, without starting an SDK download.
       if (range.length === 0) {
@@ -428,8 +435,9 @@ export function serveStreams(
     const stream = parseStreamPath(url.pathname)
     if (!stream) return
     const download = url.searchParams.get('download') === '1'
+    const warm = url.searchParams.get('warm') === '1'
     event.respondWith(
-      serve(event.request, stream.clientId, stream.token, download),
+      serve(event.request, stream.clientId, stream.token, { download, warm }),
     )
   })
 }
@@ -464,7 +472,7 @@ function rangeBody(job: Job, chunks: Chunks, length: number) {
             throw new Error('Shared file stream exceeded the requested length.')
           }
           controller.enqueue(value)
-          const reporter = job.source?.reporter
+          const reporter = job.quiet ? undefined : job.source?.reporter
           reporter?.status('downloading')
           reporter?.bytes(value.byteLength)
           if (remaining === 0) {

@@ -116,6 +116,16 @@ const video = await streams.url(object, {
 
 A URL without these callbacks costs nothing, and one with only some of them gets only those reports. The worker sends bytes and shards in batches, at most every 100 ms and just before each status change, and stops when the URL is released. A callback that throws is reported to the console and does not stop the stream or the other callbacks.
 
+### Start sooner
+
+A stream connects to the hosts that hold the file when the video asks for its first bytes, which takes a few seconds. `warm()` does it ahead of time, by reading one byte, which asks each host of the file's first part for a single 64-byte segment. Call it when a play is likely, such as when the pointer reaches a Play button. It reports no status or progress and never rejects.
+
+```ts
+const video = await streams.url(object, { name: 'clip.mp4', type: 'video/mp4' })
+videoElement.src = video.url
+playButton.onpointerenter = () => void video.warm()
+```
+
 ### Serve the worker
 
 The worker is one file, `sia-storage-sw.js`, served from your site's root. Use the line for your setup.
@@ -319,12 +329,12 @@ From `sharedSdk.objectSummaries()`.
 | | |
 |---|---|
 | `openStreams(sdk, credentials)` | `Streams` for one SDK's objects. An `Sdk` takes `{ indexerUrl, appMeta }` and a `SharedSdk` takes `{ indexerUrl, seed }`, typed by which one you pass. |
-| `streams.url(object, options)` | `{ url, blob?, release() }`. Streams where it can, else reads the whole object into `blob`. |
+| `streams.url(object, options)` | `{ url, blob?, warm(), release() }`. Streams where it can, else reads the whole object into `blob`. |
 | `streams.download(object, options)` | Saves the object. Resolves `'streaming'`, `'saved'` or `'cancelled'`. Call it from a click handler. |
 | `streams.close()` | Cancels this handle's streams. Other handles on the same SDK keep theirs. |
 | `enableStreaming(options?)` | Registers the worker and resolves whether streaming is on. `openStreams` calls it for you, so call it only to pass `workerUrl`, `scope` or `type`. |
 
-`options` for `url` and `download`: `name`, `type` (MIME), `onError(message)` for failures after streaming starts (logged when omitted), `onProgress(bytes)` when the page reads the object itself, and `signal` for `url`.
+`options` for `url` and `download`: `name`, `type` (MIME), `onError(message)` for failures after streaming starts (logged when omitted), `onStatus`, `onProgress` and `onShard` (see [Status and progress](#status-and-progress)), and `signal` for `url`.
 
 ### `@siafoundation/sia-storage/stream-worker`
 
