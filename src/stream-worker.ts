@@ -51,12 +51,29 @@ export function installStreams(
 async function connectShared({
   indexerUrl,
   seed,
+  sealKey,
 }: Extract<Connection, { kind: 'shared' }>): Promise<StreamSdk> {
-  const sdk = await SharedSdk.connect(indexerUrl, seed)
+  // Built before connecting, so a key that fails to load cannot leave a
+  // connected SDK behind with nothing to free it.
+  const key = sealKey === undefined ? undefined : new AppKey(fromHex(sealKey))
+  let sdk: SharedSdk
+  try {
+    sdk = await SharedSdk.connect(indexerUrl, seed)
+  } catch (error) {
+    key?.free()
+    throw error
+  }
   return {
-    object: ({ objectId }) => sdk.object(objectId),
+    // The page sealed the object it already had with the share's random key.
+    // Opening that saves a round trip to the indexer before every stream's
+    // first byte.
+    object: async ({ objectId, sealed }) =>
+      key && sealed ? PinnedObject.open(key, sealed) : sdk.object(objectId),
     download: (object, options) => sdk.download(object, options),
-    free: () => sdk.free(),
+    free: () => {
+      sdk.free()
+      key?.free()
+    },
   }
 }
 
