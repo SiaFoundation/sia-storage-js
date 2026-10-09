@@ -207,7 +207,8 @@ Near-identical surfaces. Real differences:
 
 - App identifier: `appMeta.appId: string (hex)` on browser, `appMeta.id: Buffer(32)` on Node.
 - Numeric sizes are `number` on browser, `bigint` on Node. Byte arrays are `Uint8Array` on browser, `Buffer` on Node (`Buffer` is a `Uint8Array` subclass; both accept either as input).
-- Sharing key seeds are hex `string` on browser, `Buffer` on Node. This covers `SharingKey.seed()`, `SharingKey.fromSeed(seed)`, and `SharedSdk.connect(indexerUrl, seed)`.
+- Sharing key seeds are hex `string` on browser, `Buffer` on Node. This covers `SharingKey.seed()`, `SharingKey.fromSeed(seed)`, `SharedSdk.connect(indexerUrl, seed)`, and `SharedSdk.connectWithCbor(indexerUrl, seed, cbor)`.
+- `sharedSdk.objectSummaries(offset, limit)` resolves `ObjectSummary` class instances on browser, which own WASM memory and are disposable like `PinnedObject`. On Node it resolves plain objects.
 - `sdk.unshareObject(key, object)` takes a `PinnedObject` on browser and an object id `string` on Node.
 - `sdk.hosts(query?)` and `sharedSdk.hosts(query?)` accept a `HostQuery` on browser; on Node they take no arguments.
 - `openStreams` gives a browser page URLs that a service worker serves. Node reads objects with `sdk.download(object, { offset, length })`, which already streams a range, so it needs no worker. On Node, `enableStreaming()` resolves false, and `url` and `download` on an `openStreams` handle reject.
@@ -239,7 +240,7 @@ Returned from `Builder.register()`, `Builder.connected()`, or `Builder.connectPr
 | `updateObjectMetadata(object)` | Push local metadata changes to the indexer. |
 | `objectShareUrl(object, validUntil)` / `objectFromShareUrl(url)` | Create / consume share URLs. |
 | `objectEvents(cursor?, limit)` | Paginated change feed. |
-| `hosts(query?)` / `slab(id)` / `account()` / `pruneSlabs()` | Indexer reads. |
+| `hosts(query?)` / `account()` / `pruneSlabs(before?)` | Indexer reads. `pruneSlabs` unpins slabs no object uses; `before` limits it to slabs pinned before that date, and omitting it leaves the cutoff to the indexer. |
 | `createSharingKey(description, expiresAt?)` | Create a `SharingKey` for read-only sharing. |
 | `sharingKeys(offset, limit)` / `sharingKey(key)` | List keys / fetch one key's `KeyRecord`. |
 | `shareObject(key, object)` / `unshareObject(key, object)` | Attach / detach an object on a sharing key. |
@@ -260,6 +261,7 @@ Returned from `Builder.register()`, `Builder.connected()`, or `Builder.connectPr
 | `reconnecting()` | Whether the approved connect key already has an account. |
 | `matchesExistingAppKey(phrase)` | Whether a phrase derives an already-registered app key. |
 | `connectPreAuthorized(seed, phrase)` | Skip the approval flow with a pre-authorized key's 32-byte seed → `Sdk`. |
+| `withCbor(enable)` | Whether to request CBOR responses from the indexer. On by default; pass `false` for JSON. Must be called before connecting. |
 
 ### `AppKey`
 
@@ -295,13 +297,22 @@ The indexer's record for a sharing key, from `sdk.sharingKey()` or `sdk.sharingK
 
 `SharedSdk.connect(indexerUrl, seed)` — read-only access for a recipient holding a
 sharing key's seed. Downloads are paid for by the key's owner.
+`SharedSdk.connectWithCbor(indexerUrl, seed, cbor)` does the same but lets you turn
+off CBOR responses from the indexer.
 
 | | |
 |---|---|
 | `stats()` | The key's `KeyStats` snapshot. |
 | `object(id)` / `objects(offset, limit)` | Read the objects the key grants access to. |
+| `objectSummaries(offset, limit)` | Lists the key's objects without their slabs, which is much smaller and faster than `objects`. Summaries describe an object but cannot be downloaded; fetch the full object with `object(id)` for that. |
 | `download(object, options?)` | Returns a `ReadableStream`. |
 | `hosts(query?)` | Hosts serving this key's objects. |
+
+### `ObjectSummary`
+
+From `sharedSdk.objectSummaries()`.
+
+`id` · `size` · `metadata` · `createdAt` · `updatedAt`
 
 ### Streaming
 
