@@ -720,6 +720,30 @@ for (const [browserName, engine] of ENGINES) {
         expect((await stats(page)).connections).toBe(2)
       }))
 
+    test('a warm-up that fails reports nothing to the page', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        await createTracked(page, 3 * CHUNK)
+        await page.evaluate(() => window.streamTest.configure({ failure: 'Host unavailable' }))
+        await page.evaluate(() => window.streamTest.warmOne())
+        await Bun.sleep(300)
+        expect(await errors(page)).toEqual([])
+        expect(await tracked(page)).toEqual({ statuses: [], progress: [], hosts: [] })
+        expect(await page.evaluate(() => window.streamTest.eventMessages())).toBe(0)
+      }))
+
+    test('a warm-up reads one byte and reports nothing to the page', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        const url = await createTracked(page, 3 * CHUNK)
+        await page.evaluate(() => window.streamTest.warmOne())
+        expect((await stats(page)).calls).toEqual([{ offset: 0, length: 1 }])
+        expect(await tracked(page)).toEqual({ statuses: [], progress: [], hosts: [] })
+        expect(await page.evaluate(() => window.streamTest.eventMessages())).toBe(0)
+        expect(await readAll(page, url)).toEqual(pattern(3 * CHUNK))
+        expect((await tracked(page)).statuses).toEqual(['connecting', 'downloading', 'idle'])
+      }))
+
     // Stopping a service worker needs Chromium's DevTools protocol.
     test.skipIf(browserName !== 'chromium')(
       'after a worker restart, the same URL recovers its file from the page',

@@ -94,6 +94,7 @@ export async function setup(
       : openStreams(sdk as unknown as SharedSdk, { indexerUrl, seed: 'ab'.repeat(32) })
   const streams = open()
   let releaseOne = () => {}
+  let warmOne = async () => {}
   const errors: string[] = []
   const onError = (message: string) => errors.push(message)
   // What the last URL or download made with `track` reported.
@@ -148,9 +149,12 @@ export async function setup(
         ...(tracked && track(throwing, statusOnly)),
       })
       releaseOne = file.release
+      warmOne = file.warm
       return { url: file.url, fromPage: file.blob !== undefined }
     },
     releaseOne: () => releaseOne(),
+    /** Warms the last URL `create` made. */
+    warmOne: () => warmOne(),
     close: () => streams.close(),
     /** Opens a second handle on the same SDK, makes a URL with it, then closes it. */
     async closeAnother(size: number) {
