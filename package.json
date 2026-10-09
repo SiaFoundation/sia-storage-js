@@ -56,10 +56,11 @@
     "build-wasm": "bun run scripts/build-wasm.ts",
     "setup": "bun run scripts/setup-rust.ts",
     "setup-napi-test": "bun run scripts/setup-napi-test.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p bench",
     "test": "bun test src/tests/install-integration.test.ts",
     "test:browser": "bun test src/tests/vite-integration.test.ts src/tests/esbuild-integration.test.ts src/tests/webpack-integration.test.ts src/tests/rollup-integration.test.ts src/tests/nextjs-integration.test.ts src/tests/streaming.test.ts src/tests/stream-prebuilt-worker.test.ts",
     "test:all": "bun test",
+    "bench": "bun run bench/run.ts",
     "prepublishOnly": "bun run build && bun test",
     "publish-npm": "bun run scripts/publish.ts"
   },
