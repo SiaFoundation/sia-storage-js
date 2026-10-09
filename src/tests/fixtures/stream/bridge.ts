@@ -2,11 +2,11 @@
 // stand-in SDK, a SharedSdk or an app Sdk, whose own downloads throw unless a
 // test allows the fallback, so a test fails if bytes it expects the worker to
 // serve come through the page.
-import type {
-  AppMetadata,
-  PinnedObject,
-  Sdk,
-  SharedSdk,
+import wasmInit, {
+  type AppMetadata,
+  type PinnedObject,
+  type Sdk,
+  type SharedSdk,
 } from '../../../../wasm/sia_storage_wasm.js'
 import { enableStreaming, openStreams } from '../../../stream/page'
 import { requestReply } from '../../../stream/protocol'
@@ -33,7 +33,8 @@ const APP_META: AppMetadata = {
 
 /** What `openStreams` throws for these credentials, or undefined. */
 export function openError(kind: 'shared' | 'app', credentials: unknown) {
-  const sdk = kind === 'app' ? { appKey: () => ({ export: () => new Uint8Array(32) }) } : {}
+  const key = { export: () => new Uint8Array(32), free() {} }
+  const sdk = kind === 'app' ? { appKey: () => key } : {}
   try {
     openStreams(sdk as Sdk, credentials as never)
     return undefined
@@ -50,12 +51,27 @@ async function rpc(config?: FixtureConfig) {
   })) as FixtureStats
 }
 
-export async function setup(workerUrl: string, kind: 'shared' | 'app' = 'shared') {
+/**
+ * With `wasm`, the SDK's WebAssembly runs, as it does on any page holding a
+ * connected SDK. The stand-in SDK needs none of it, but the page needs it to
+ * make the key a shared file is sealed with for the worker.
+ */
+export async function setup(
+  workerUrl: string,
+  kind: 'shared' | 'app' = 'shared',
+  { wasm = false } = {},
+) {
+  if (wasm) await wasmInit({ module_or_path: '/sia_storage_wasm_bg.wasm' })
   let pageDownloads = 0
+  let keysFreed = 0
   let fallback = false
   const sdk = {
     ...(kind === 'app' && {
-      appKey: () => ({ export: () => new Uint8Array(32).fill(7) }),
+      // A copy of the app key on each call, as the real `Sdk` returns.
+      appKey: () => ({
+        export: () => new Uint8Array(32).fill(7),
+        free: () => void keysFreed++,
+      }),
     }),
     download(object: PinnedObject) {
       pageDownloads++
@@ -110,6 +126,7 @@ export async function setup(workerUrl: string, kind: 'shared' | 'app' = 'shared'
     ready,
     errors,
     pageDownloads: () => pageDownloads,
+    keysFreed: () => keysFreed,
     tracked: () => tracked,
     eventMessages: () => messages.status + messages.progress,
     progressMessages: () => messages.progress,

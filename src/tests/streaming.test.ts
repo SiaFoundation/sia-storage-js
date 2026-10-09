@@ -22,6 +22,7 @@ setDefaultTimeout(60_000)
 
 const HUGE_SIZE = 5 * 1024 ** 3 + 123
 const FIXTURES = join(import.meta.dir, 'fixtures', 'stream')
+const WASM = join(import.meta.dir, '..', '..', 'wasm', 'sia_storage_wasm_bg.wasm')
 
 let browser: Browser
 let server: ReturnType<typeof Bun.serve>
@@ -49,6 +50,11 @@ beforeAll(async () => {
     fetch(request) {
       const path = new URL(request.url).pathname
       if (path === '/bridge.js') return script(bridgeCode)
+      if (path === '/sia_storage_wasm_bg.wasm') {
+        return new Response(Bun.file(WASM), {
+          headers: { 'Content-Type': 'application/wasm' },
+        })
+      }
       // Served at the root and under /app/, a site served from a sub-path.
       if (path === '/test-worker.js' || path === '/app/test-worker.js') {
         return script(workerCode)
@@ -84,21 +90,24 @@ async function withPage(
 
 type Kind = 'shared' | 'app'
 
-/** Loads the harness at `path` with the worker served beside it. */
-async function setup(page: Page, path = '/', kind: Kind = 'shared') {
+/**
+ * Loads the harness at `path` with the worker served beside it. `wasm` starts
+ * the SDK's WebAssembly on the page first.
+ */
+async function setup(page: Page, path = '/', kind: Kind = 'shared', wasm = false) {
   await page.goto(origin + path)
-  return start(page, path, kind)
+  return start(page, path, kind, wasm)
 }
 
 /** Starts the harness on the page as it is, without navigating. */
-function start(page: Page, path = '/', kind: Kind = 'shared') {
+function start(page: Page, path = '/', kind: Kind = 'shared', wasm = false) {
   return page.evaluate(
-    async ({ workerUrl, kind }) => {
+    async ({ workerUrl, kind, wasm }) => {
       const bridge = (await import('/bridge.js' as string)) as typeof Bridge
-      window.streamTest = await bridge.setup(workerUrl, kind)
+      window.streamTest = await bridge.setup(workerUrl, kind, { wasm })
       return window.streamTest.ready
     },
-    { workerUrl: `${path}test-worker.js`, kind },
+    { workerUrl: `${path}test-worker.js`, kind, wasm },
   )
 }
 
@@ -685,6 +694,21 @@ for (const [browserName, engine] of ENGINES) {
         expect(await stats(page)).toMatchObject({ connections: 1, freed: 0 })
       }))
 
+    test('a shared file reaches the worker sealed, so the worker looks nothing up', () =>
+      withPage(async (page) => {
+        expect(await setup(page, '/', 'shared', true)).toBe(true)
+        expect(await readAll(page, await create(page, 17))).toEqual(pattern(17))
+        expect(await readAll(page, await create(page, 23))).toEqual(pattern(23))
+        expect(await stats(page)).toMatchObject({ sealKeys: 1, lookups: 0 })
+      }))
+
+    test('without the SDK running on the page, the worker looks a shared file up', () =>
+      withPage(async (page) => {
+        expect(await setup(page)).toBe(true)
+        expect(await readAll(page, await create(page, 17))).toEqual(pattern(17))
+        expect(await stats(page)).toMatchObject({ sealKeys: 0, lookups: 1 })
+      }))
+
     test('a failed connection is retried by the next request', () =>
       withPage(async (page) => {
         expect(await setup(page)).toBe(true)
@@ -761,6 +785,15 @@ for (const [browserName, engine] of ENGINES) {
         expect(result).toEqual({ status: 206, bytes: pattern(64, 4294967313) })
         expect((await stats(page)).kinds).toEqual(['app'])
         expect(await pageDownloads(page)).toBe(0)
+      }))
+
+    test('closing an app Sdk\'s streams frees their copy of its app key', () =>
+      withPage(async (page) => {
+        expect(await setup(page, '/', 'app')).toBe(true)
+        await create(page)
+        expect(await page.evaluate(() => window.streamTest.keysFreed())).toBe(0)
+        await page.evaluate(() => window.streamTest.close())
+        expect(await page.evaluate(() => window.streamTest.keysFreed())).toBe(1)
       }))
 
     test('an app Sdk download goes to the browser with every byte', () =>
