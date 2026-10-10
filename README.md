@@ -239,7 +239,7 @@ Returned from `Builder.register()`, `Builder.connected()`, or `Builder.connectPr
 | `updateObjectMetadata(object)` | Push local metadata changes to the indexer. |
 | `objectShareUrl(object, validUntil)` / `objectFromShareUrl(url)` | Create / consume share URLs. |
 | `objectEvents(cursor?, limit)` | Paginated change feed. |
-| `hosts(query?)` / `slab(id)` / `account()` / `pruneSlabs()` | Indexer reads. |
+| `hosts(query?)` / `account()` / `pruneSlabs(before?)` | Indexer reads. `pruneSlabs` unpins slabs no object uses; `before` limits it to slabs pinned before that date, and omitting it leaves the cutoff to the indexer. |
 | `createSharingKey(description, expiresAt?)` | Create a `SharingKey` for read-only sharing. |
 | `sharingKeys(offset, limit)` / `sharingKey(key)` | List keys / fetch one key's `KeyRecord`. |
 | `shareObject(key, object)` / `unshareObject(key, object)` | Attach / detach an object on a sharing key. |
@@ -300,8 +300,16 @@ sharing key's seed. Downloads are paid for by the key's owner.
 |---|---|
 | `stats()` | The key's `KeyStats` snapshot. |
 | `object(id)` / `objects(offset, limit)` | Read the objects the key grants access to. |
+| `objectSummaries(offset, limit)` | List the key's objects as `ObjectSummary` values, without their slabs. Much smaller and faster than `objects`. |
 | `download(object, options?)` | Returns a `ReadableStream`. |
 | `hosts(query?)` | Hosts serving this key's objects. |
+
+### `ObjectSummary`
+
+From `sharedSdk.objectSummaries()`. Describes an object without its slabs, so it
+cannot be downloaded — fetch the full object with `sharedSdk.object(id)` first.
+
+`id` · `size` · `metadata` · `createdAt` · `updatedAt`
 
 ### Streaming
 
