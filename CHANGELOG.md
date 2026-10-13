@@ -1,4 +1,26 @@
 # Changelog
+## 0.1.4 (2026-10-13)
+
+### Features
+
+#### Update sia-sdk-rs (napi v0.11.1, wasm v0.8.1)
+
+Adds `sharedSdk.objectSummaries(offset, limit)`, which lists a sharing key's objects without their slabs, along with the `ObjectSummary` type it returns. The SDK asks the indexer for CBOR responses and falls back to JSON. `sdk.pruneSlabs()` now takes an optional `before` cutoff. `sdk.slab(id)` and the `PinnedSlab` type are removed upstream and no longer exported, and `encodedSize` now throws when data shards is zero rather than aborting the process.
+
+#### Open a stream's host connections before Play with `warm()`
+
+`StreamedFile.warm()` opens connections to the hosts holding the start of the file before a play, by reading one byte without reporting any status or progress. A stream otherwise connects to its hosts only when the video asks for its first bytes, which takes a few seconds. Call it when a play is likely, such as when the pointer reaches a Play button. It resolves when the byte arrives, or at once for a file the page read itself, and never rejects.
+
+### Fixes
+
+#### Free the app key copy when streams close
+
+`openStreams` on an `Sdk` takes a copy of its app key to seal objects for the worker. `close()` now frees that copy, which was kept until the page went away.
+
+#### Start shared streams without looking the file up again
+
+A stream from a `SharedSdk` no longer makes the service worker ask the indexer for a file the page already has. The page seals the file's record with a random key that only it and its worker know, and the worker opens it. That lookup takes about 0.2 seconds before a video's first byte against the production indexer, and took up to 7 seconds while the indexer was under load. A page and worker from different versions still work together, since a worker that receives no key looks the file up as before.
+
 ## 0.1.3 (2026-10-07)
 
 ### Features
