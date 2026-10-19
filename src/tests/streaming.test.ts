@@ -762,6 +762,39 @@ for (const [browserName, engine] of ENGINES) {
         await session.detach()
       }))
 
+    // Firefox stops a service worker a set time after the last event it
+    // received, even while it is streaming a response, and the browser saves
+    // the bytes it has as a finished download. Its default is 30 seconds. This
+    // browser waits just past the page's 10-second keep-alive, so the test
+    // reads for two of those windows instead of waiting out the default.
+    test.skipIf(browserName !== 'firefox')(
+      'a download that outlasts the worker idle timeout gets every byte',
+      async () => {
+        const idleBrowser = await firefox.launch({
+          firefoxUserPrefs: { 'dom.serviceWorkers.idle_timeout': 11_000 },
+        })
+        const context = await idleBrowser.newContext({ acceptDownloads: true })
+        try {
+          const page = await context.newPage()
+          expect(await setup(page)).toBe(true)
+          // 96 chunks of 1 KiB, one every 250 ms, takes 24 seconds.
+          const size = 96 * 1024
+          await page.evaluate(() =>
+            window.streamTest.configure({ chunkSize: 1024, chunkDelay: 250 }),
+          )
+          const downloaded = page.waitForEvent('download')
+          await clickToSave(page, size, 'slow.bin')
+          const download = await downloaded
+          const path = join(downloads, 'slow.bin')
+          await download.saveAs(path)
+          expect(readFileSync(path).length).toBe(size)
+        } finally {
+          await context.close()
+          await idleBrowser.close()
+        }
+      },
+    )
+
     test('a site served from a sub-path streams, and downloads, under the worker scope', () =>
       withPage(async (page) => {
         expect(await setup(page, '/app/')).toBe(true)

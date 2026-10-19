@@ -107,6 +107,8 @@ export type Streams = {
 const DEFAULT_WORKER_URL = '/sia-storage-sw.js'
 // Covers registering the worker, its first activation, and the handshake.
 const SETUP_TIMEOUT = 5000
+// Well inside the 30 seconds Firefox lets a worker go without an event.
+const KEEP_ALIVE_INTERVAL = 10_000
 
 /** A stream URL this page handed out, and what the worker needs to serve it. */
 type StreamEntry = {
@@ -140,6 +142,7 @@ let initialization: Promise<boolean> | undefined
 let initOptions: StreamingOptions = {}
 // The page's controller when setup last failed. Undefined unless it failed.
 let failedController: ServiceWorker | null | undefined
+let keepAlive: ReturnType<typeof setInterval> | undefined
 
 /**
  * Registers the streaming worker and resolves whether this page can stream.
@@ -405,10 +408,32 @@ function releaseStreams(handle: Opened) {
   navigator.serviceWorker.controller?.postMessage(message)
 }
 
+/**
+ * Messages the worker while it is serving this page, which Firefox needs to
+ * keep the worker running past 30 seconds. See `hold` in the worker.
+ */
+function keepWorkerAlive(streaming: boolean) {
+  clearInterval(keepAlive)
+  keepAlive = undefined
+  const controller = navigator.serviceWorker.controller
+  if (!streaming || !controller) return
+  const message = { type: 'sia-keep-alive' } satisfies PageMessage
+  keepAlive = setInterval(() => {
+    // Streams end with the worker serving them, so a new controller has none.
+    if (navigator.serviceWorker.controller === controller) {
+      controller.postMessage(message)
+    } else {
+      keepWorkerAlive(false)
+    }
+  }, KEEP_ALIVE_INTERVAL)
+}
+
 function onWorkerMessage(event: MessageEvent) {
   if (event.source !== navigator.serviceWorker.controller) return
   const data = event.data as WorkerMessage | undefined
-  if (data?.type === 'sia-stream-error') {
+  if (data?.type === 'sia-streaming') {
+    keepWorkerAlive(data.active === true)
+  } else if (data?.type === 'sia-stream-error') {
     const entry = entries.get(data.token)
     if (!entry) return
     const { offset, length } = data

@@ -134,7 +134,42 @@ export function serveStreams(
   // Released session keys. A page reply already in flight when its share is
   // released must not bring the session back.
   const released = new Set<string>()
+  // Requests in flight per page, by client id. See `hold`.
+  const active = new Map<string, number>()
   const key = (clientId: string, id: string) => JSON.stringify([clientId, id])
+
+  function tellStreaming(client: StreamClient, streaming: boolean) {
+    try {
+      client.postMessage({
+        type: 'sia-streaming',
+        active: streaming,
+      } satisfies WorkerMessage)
+    } catch {
+      // The owning tab may already be gone.
+    }
+  }
+
+  /**
+   * Counts a request against its page until `lifetime` settles. Firefox stops
+   * a worker 30 seconds after the last event it received, even mid-response,
+   * and saves a download cut off that way as if it were complete. While a page
+   * has a request here it sends keep-alive messages, and each one restarts
+   * that timer.
+   */
+  function hold(client: StreamClient, lifetime: Promise<void>) {
+    const count = (active.get(client.id) ?? 0) + 1
+    active.set(client.id, count)
+    if (count === 1) tellStreaming(client, true)
+    void lifetime.then(() => {
+      const left = active.get(client.id)! - 1
+      if (left > 0) {
+        active.set(client.id, left)
+        return
+      }
+      active.delete(client.id)
+      tellStreaming(client, false)
+    })
+  }
 
   function idle(session: Session) {
     clearTimeout(session.timer)
@@ -268,6 +303,8 @@ export function serveStreams(
     let complete = () => {}
     // Kept out of event.waitUntil. Chromium kills a worker whose event runs
     // past 5 minutes, which would end any download still running at that mark.
+    // The page's keep-alive messages, started by `hold`, keep Firefox's worker
+    // running instead.
     const lifetime = new Promise<void>((resolve) => {
       complete = resolve
     })
@@ -340,6 +377,7 @@ export function serveStreams(
     try {
       const client = await scope.clients.get(clientId)
       if (!client || request.signal.aborted) return errorResponse(404)
+      hold(client, job.lifetime)
       const source = getSource(client, token)
       job.source = source
       source.requests.add(job.abort)
@@ -427,6 +465,10 @@ export function serveStreams(
       released.add(sessionKey)
       const session = sessions.get(sessionKey)
       if (session) event.waitUntil(disposeSession(session))
+    } else if (data?.type === 'sia-keep-alive' && !active.has(clientId)) {
+      // A worker stopped mid-stream never sent the page `active: false`, so the
+      // one that answers this keep-alive does.
+      tellStreaming(source as StreamClient, false)
     }
   })
   scope.addEventListener('fetch', (event) => {
