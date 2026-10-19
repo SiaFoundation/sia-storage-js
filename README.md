@@ -161,7 +161,7 @@ export const dynamic = 'force-static'
 - **A site with its own service worker** can't add a second one, since a page has only one. Call `installStreams(self)` from `@siafoundation/sia-storage/stream-worker` inside yours, and point `enableStreaming` at it: `enableStreaming({ workerUrl: '/sw.js', type: 'module' })`.
 - **A Content Security Policy** needs `worker-src 'self'`.
 - **The credentials stay in memory.** The worker connects its own SDK, so it needs what yours was made with: a `SharedSdk`'s seed, or an `Sdk`'s app key, which it takes from `sdk.appKey()`. The page hands them over a message port, and the worker never writes them anywhere.
-- **Keep the tab open** until a download finishes. If the browser restarts the worker, it gets the credentials back from the page.
+- **Keep the tab open** until a download finishes. The page messages the worker every 10 seconds while it streams, since Firefox otherwise stops the worker 30 seconds in and saves the partial file as complete. If the browser restarts the worker, it gets the credentials back from the page.
 - **The first download click** within a few seconds of `openStreams`, before the worker is ready, uses the save picker or an in-memory save instead.
 
 ## iCloud Private Relay

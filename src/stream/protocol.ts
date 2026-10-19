@@ -58,6 +58,9 @@ export type PageMessage =
   | { type: 'sia-client' }
   | { type: 'sia-release'; token: string }
   | { type: 'sia-release-share'; session: string }
+  // Sent while the worker reports `sia-streaming` active. The event it raises
+  // in the worker is what keeps the worker running.
+  | { type: 'sia-keep-alive' }
 
 /** Worker to page. */
 export type WorkerMessage =
@@ -70,6 +73,9 @@ export type WorkerMessage =
       length?: number
     }
   | { type: 'sia-stream-status'; token: string; status: StreamStatus }
+  // Whether any request from this page is still being served. Sent when that
+  // changes, and in reply to a keep-alive that arrives when none is.
+  | { type: 'sia-streaming'; active: boolean }
   | {
       type: 'sia-stream-progress'
       token: string
