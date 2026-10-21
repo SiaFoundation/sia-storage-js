@@ -9,6 +9,7 @@ export const {
   PinnedObject,
   PackedUpload,
   ObjectEvent,
+  ObjectEventSummary,
   SharingKey,
   KeyRecord,
   SharedSdk,
