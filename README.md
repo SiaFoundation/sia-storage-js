@@ -218,7 +218,7 @@ Near-identical surfaces. Real differences:
 - App identifier: `appMeta.appId: string (hex)` on browser, `appMeta.id: Buffer(32)` on Node.
 - Numeric sizes are `number` on browser, `bigint` on Node. Byte arrays are `Uint8Array` on browser, `Buffer` on Node (`Buffer` is a `Uint8Array` subclass; both accept either as input).
 - Sharing key seeds are hex `string` on browser, `Buffer` on Node. This covers `SharingKey.seed()`, `SharingKey.fromSeed(seed)`, and `SharedSdk.connect(indexerUrl, seed)`.
-- `sharedSdk.objectSummaries(offset, limit)` resolves `ObjectSummary` class instances on browser, which own WASM memory and are disposable like `PinnedObject`. On Node it resolves plain objects.
+- `sharedSdk.objectSummaries(offset, limit)` resolves `ObjectSummary` class instances on browser, which own WASM memory and are disposable like `PinnedObject`. On Node it resolves plain objects. The `object` on an `ObjectEventSummary` from `sdk.objectEventSummaries(cursor?, limit)` differs the same way, and is `undefined` on browser where it is `null` on Node.
 - `sdk.unshareObject(key, object)` takes a `PinnedObject` on browser and an object id `string` on Node.
 - `sdk.hosts(query?)` and `sharedSdk.hosts(query?)` accept a `HostQuery` on browser; on Node they take no arguments.
 - `openStreams` gives a browser page URLs that a service worker serves. Node reads objects with `sdk.download(object, { offset, length })`, which already streams a range, so it needs no worker. On Node, `enableStreaming()` resolves false, and `url` and `download` on an `openStreams` handle reject.
@@ -250,6 +250,7 @@ Returned from `Builder.register()`, `Builder.connected()`, or `Builder.connectPr
 | `updateObjectMetadata(object)` | Push local metadata changes to the indexer. |
 | `objectShareUrl(object, validUntil)` / `objectFromShareUrl(url)` | Create / consume share URLs. |
 | `objectEvents(cursor?, limit)` | Paginated change feed. |
+| `objectEventSummaries(cursor?, limit)` | The same change feed without the objects' slabs, which is much smaller and faster. Each event carries an `ObjectEventSummary`, whose object cannot be downloaded. Fetch the full object with `object(key)` for that. |
 | `hosts(query?)` / `account()` / `pruneSlabs(before?)` | Indexer reads. `pruneSlabs` unpins slabs no object uses; `before` limits it to slabs pinned before that date, and omitting it leaves the cutoff to the indexer. |
 | `createSharingKey(description, expiresAt?)` | Create a `SharingKey` for read-only sharing. |
 | `sharingKeys(offset, limit)` / `sharingKey(key)` | List keys / fetch one key's `KeyRecord`. |
@@ -317,9 +318,15 @@ sharing key's seed. Downloads are paid for by the key's owner.
 
 ### `ObjectSummary`
 
-From `sharedSdk.objectSummaries()`.
+From `sharedSdk.objectSummaries()`, or an `ObjectEventSummary`'s `object`.
 
 `id` · `size` · `metadata` · `createdAt` · `updatedAt`
+
+### `ObjectEventSummary`
+
+From `sdk.objectEventSummaries()`.
+
+`id` · `deleted` · `updatedAt` · `object` — the event's `ObjectSummary`, absent when the object was deleted.
 
 ### Streaming
 
