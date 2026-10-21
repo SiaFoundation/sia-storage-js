@@ -24,7 +24,8 @@ content += `
 export declare function initSia(): Promise<void>
 export declare function detectPrivateRelay(): Promise<boolean>
 /** Always false. Service worker streaming is for browser pages. */
-export declare function enableStreaming(options?: { workerUrl?: string; scope?: string; type?: 'classic' | 'module' }): Promise<boolean>
+export declare function enableStreaming(options?: { workerUrl?: string; scope?: string; type?: 'classic' | 'module'; logLevel?: StreamLogLevel }): Promise<boolean>
+export type StreamLogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace'
 export type StreamStatus = 'connecting' | 'downloading' | 'idle'
 /** The same callbacks browser code passes, so code shared with the browser typechecks. */
 export type FileEvents = {

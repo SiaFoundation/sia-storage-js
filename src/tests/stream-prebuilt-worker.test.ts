@@ -4,7 +4,8 @@
 // The fake indexer knows no objects and no app keys, so each stream request
 // ends in its 404. That error reaching the page proves the worker loaded the
 // WebAssembly and reached the indexer through the real SDK, for a SharedSdk
-// and for an app Sdk.
+// and for an app Sdk. Under /approved/ it accepts any app key and lists no
+// hosts, so an app Sdk connects there.
 
 import { afterAll, beforeAll, expect, setDefaultTimeout, test } from 'bun:test'
 import { join } from 'node:path'
@@ -34,6 +35,10 @@ beforeAll(async () => {
       const { pathname } = new URL(request.url)
       indexerPaths.push(pathname)
       if (pathname === '/shared/hosts') return Response.json([], { headers: cors })
+      if (pathname === '/approved/auth/check') {
+        return new Response(null, { status: 204, headers: cors })
+      }
+      if (pathname === '/approved/hosts') return Response.json([], { headers: cors })
       return new Response(`the fake indexer has no ${pathname}`, { status: 404, headers: cors })
     },
   })
@@ -178,6 +183,49 @@ test.each([
     // checks the key with it.
     expect(indexerPaths).toContain('/auth/check')
     expect(message).toContain('the fake indexer has no /auth/check')
+  } finally {
+    await browser.close()
+  }
+})
+
+test.each([
+  ['chromium', chromium],
+  ['firefox', firefox],
+  ['webkit', webkit],
+] as const)('%s: the prebuilt worker prints the SDK log in a page that asks for it', async (_, engine) => {
+  const browser = await engine.launch()
+  try {
+    const page = await browser.newPage()
+    const printed: string[] = []
+    page.on('console', (message) => void printed.push(`${message.type()} ${message.text()}`))
+    await page.goto(`http://127.0.0.1:${site.port}/`)
+    await page.evaluate(
+      async ({ indexerUrl, objectId }) => {
+        const { enableStreaming, openStreams } = await import('/dist/index.js' as string)
+        await enableStreaming({ logLevel: 'debug' })
+        const sdk = { appKey: () => ({ export: () => new Uint8Array(32).fill(7) }) }
+        // Not a real sealed object, so the read fails once the SDK connects.
+        const object = { id: () => objectId, size: () => 100, seal: () => ({}) }
+        const appMeta = {
+          appId: '0'.repeat(64),
+          name: 'Prebuilt worker',
+          description: 'Tests',
+          serviceUrl: 'https://example.test',
+        }
+        const streams = openStreams(sdk, { indexerUrl, appMeta })
+        await new Promise((resolve) =>
+          streams.url(object, { name: 'app.bin', onError: resolve }).then(
+            ({ url }: { url: string }) => fetch(url).catch(() => {}),
+          ),
+        )
+      },
+      { indexerUrl: `http://127.0.0.1:${indexer.port}/approved/`, objectId: OBJECT_ID },
+    )
+    // Logged by the SDK as it connects, at debug.
+    const line = 'debug [Sia stream worker] Refreshed hosts: total 0, good for upload 0'
+    const deadline = Date.now() + 5000
+    while (!printed.includes(line) && Date.now() < deadline) await Bun.sleep(100)
+    expect(printed).toContain(line)
   } finally {
     await browser.close()
   }

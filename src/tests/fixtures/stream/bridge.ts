@@ -9,8 +9,8 @@ import wasmInit, {
   type SharedSdk,
 } from '../../../../wasm/sia_storage_wasm.js'
 import { enableStreaming, openStreams } from '../../../stream/page'
-import { requestReply } from '../../../stream/protocol'
-import type { FixtureConfig, FixtureStats } from './worker'
+import { requestReply, type StreamLogLevel } from '../../../stream/protocol'
+import type { FixtureConfig, FixtureLog, FixtureStats } from './worker'
 
 function object(size: number, wav = false) {
   const id = `${wav ? 'wav' : 'bytes'}:${size}`
@@ -54,12 +54,13 @@ async function rpc(config?: FixtureConfig) {
 /**
  * With `wasm`, the SDK's WebAssembly runs, as it does on any page holding a
  * connected SDK. The stand-in SDK needs none of it, but the page needs it to
- * make the key a shared file is sealed with for the worker.
+ * make the key a shared file is sealed with for the worker. `logLevel` is
+ * passed to `enableStreaming`.
  */
 export async function setup(
   workerUrl: string,
   kind: 'shared' | 'app' = 'shared',
-  { wasm = false } = {},
+  { wasm = false, logLevel }: { wasm?: boolean; logLevel?: StreamLogLevel } = {},
 ) {
   if (wasm) await wasmInit({ module_or_path: '/sia_storage_wasm_bg.wasm' })
   let pageDownloads = 0
@@ -86,7 +87,7 @@ export async function setup(
       })
     },
   }
-  const ready = await enableStreaming({ workerUrl })
+  const ready = await enableStreaming({ workerUrl, logLevel })
   const indexerUrl = 'https://fixture.invalid'
   const open = () =>
     kind === 'app'
@@ -116,12 +117,13 @@ export async function setup(
       },
     }
   }
-  // Status and progress messages the page received, for any URL.
-  const messages = { status: 0, progress: 0 }
+  // Status, progress and log messages the page received, for any URL.
+  const messages = { status: 0, progress: 0, log: 0 }
   navigator.serviceWorker.addEventListener('message', (event) => {
     const type = (event.data as { type?: string } | null)?.type
     if (type === 'sia-stream-status') messages.status++
     if (type === 'sia-stream-progress') messages.progress++
+    if (type === 'sia-log') messages.log++
   })
   return {
     ready,
@@ -131,6 +133,12 @@ export async function setup(
     tracked: () => tracked,
     eventMessages: () => messages.status + messages.progress,
     progressMessages: () => messages.progress,
+    logMessages: () => messages.log,
+    /** Has the worker report `log`. See `FixtureLog`. */
+    workerLog: async (log: FixtureLog) => {
+      const worker = navigator.serviceWorker.controller!
+      await requestReply(worker, { type: 'fixture-log', log }, { timeout: 5000 })
+    },
     stats: () => rpc(),
     configure: (config: FixtureConfig) => rpc(config),
     allowFallback: () => {

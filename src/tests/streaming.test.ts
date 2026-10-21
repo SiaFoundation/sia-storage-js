@@ -17,6 +17,7 @@ import {
   webkit,
 } from 'playwright'
 import type * as Bridge from './fixtures/stream/bridge'
+import type { StreamLogLevel } from '../stream/protocol'
 
 setDefaultTimeout(60_000)
 
@@ -92,24 +93,54 @@ type Kind = 'shared' | 'app'
 
 /**
  * Loads the harness at `path` with the worker served beside it. `wasm` starts
- * the SDK's WebAssembly on the page first.
+ * the SDK's WebAssembly on the page first, and `logLevel` goes to
+ * `enableStreaming`.
  */
-async function setup(page: Page, path = '/', kind: Kind = 'shared', wasm = false) {
+async function setup(
+  page: Page,
+  path = '/',
+  kind: Kind = 'shared',
+  wasm = false,
+  logLevel?: StreamLogLevel,
+) {
   await page.goto(origin + path)
-  return start(page, path, kind, wasm)
+  return start(page, path, kind, wasm, logLevel)
 }
 
 /** Starts the harness on the page as it is, without navigating. */
-function start(page: Page, path = '/', kind: Kind = 'shared', wasm = false) {
+function start(
+  page: Page,
+  path = '/',
+  kind: Kind = 'shared',
+  wasm = false,
+  logLevel?: StreamLogLevel,
+) {
   return page.evaluate(
-    async ({ workerUrl, kind, wasm }) => {
+    async ({ workerUrl, kind, wasm, logLevel }) => {
       const bridge = (await import('/bridge.js' as string)) as typeof Bridge
-      window.streamTest = await bridge.setup(workerUrl, kind, { wasm })
+      window.streamTest = await bridge.setup(workerUrl, kind, { wasm, logLevel })
       return window.streamTest.ready
     },
-    { workerUrl: `${path}test-worker.js`, kind, wasm },
+    { workerUrl: `${path}test-worker.js`, kind, wasm, logLevel },
   )
 }
+
+/** The worker's log lines the page prints from now on, with their console type. */
+function printedLog(page: Page) {
+  const printed: { type: string; text: string }[] = []
+  page.on('console', (message) => {
+    const text = message.text()
+    if (text.startsWith('[Sia stream worker] ')) {
+      printed.push({ type: message.type(), text })
+    }
+  })
+  return printed
+}
+
+const workerLog = (page: Page, log: Parameters<Bridge.Harness['workerLog']>[0]) =>
+  page.evaluate((log) => window.streamTest.workerLog(log), log)
+const logMessages = (page: Page) =>
+  page.evaluate(() => window.streamTest.logMessages())
 
 async function create(
   page: Page,
@@ -159,6 +190,23 @@ const readAll = (page: Page, url: string) =>
 const CHUNK = 64 * 1024
 
 const tracked = (page: Page) => page.evaluate(() => window.streamTest.tracked())
+
+// Lines as the SDK's logger formats them. The warning carries a fetch error
+// for a signed indexer request, whose query string must not reach the page.
+const HOST_KEY = `ed25519:${'c3'.repeat(32)}`
+const SIGNATURE = 'Zm9vYmFy'.repeat(10)
+const DEBUG_LINE = `slab 0 shard 1 download from ${HOST_KEY} complete after 12ms (1/10 shards)`
+const WARN_LINE = `failed to refresh hosts: http error: error sending request for url (https://indexer.test/hosts?sv=1&sc=abc&ss=${SIGNATURE})`
+const REDACTED_WARN_LINE = 'failed to refresh hosts: http error: error sending request for url (https://indexer.test/hosts?[redacted])'
+const SDK_LINES = [
+  '[TRACE] Fixture trace',
+  `[DEBUG] ${DEBUG_LINE}`,
+  '[INFO] Fixture info',
+  `[WARN] ${WARN_LINE}`,
+]
+// As the SDK's panic hook prints it, with the stack the browser adds.
+const PANIC =
+  'panicked at sia_storage/src/download.rs:336:35:\nindex out of bounds: the len is 3 but the index is 3\n\nStack:\n\nError\n    at fixture\n\n'
 
 /** A URL whose status, progress and shard callbacks record into `tracked`. */
 const createTracked = (page: Page, size: number) =>
@@ -879,6 +927,134 @@ for (const [browserName, engine] of ENGINES) {
           await session.send('ServiceWorker.stopAllWorkers')
           expect(await readAll(page, url)).toEqual(pattern(17))
           expect((await stats(page)).kinds).toEqual(['app'])
+          await session.detach()
+        }),
+    )
+
+    test('a page without a logLevel gets none of the worker log, not even a panic', () =>
+      withPage(async (page) => {
+        const printed = printedLog(page)
+        expect(await setup(page)).toBe(true)
+        await workerLog(page, {
+          lines: SDK_LINES,
+          panic: PANIC,
+          uncaught: 'Fixture failure',
+          rejection: 'Fixture rejection',
+        })
+        await Bun.sleep(1000)
+        expect(printed).toEqual([])
+        expect(await logMessages(page)).toBe(0)
+        // The SDK's logger is never set.
+        expect((await stats(page)).logLevels).toEqual([])
+      }))
+
+    // In Firefox under Playwright a page loaded while the worker is already
+    // active is not controlled by it, so only a context's first page can
+    // stream and this test's later pages resolve setup false. The routing by
+    // page and level is also covered by stream-logs.test.ts.
+    test.skipIf(browserName === 'firefox')(
+      'log lines reach only the pages that asked, at their level or above, in one batch',
+      () =>
+        withPage(async (debugPage, context) => {
+          const warnPage = await context.newPage()
+          const quietPage = await context.newPage()
+          const printed = {
+            debug: printedLog(debugPage),
+            warn: printedLog(warnPage),
+            quiet: printedLog(quietPage),
+          }
+          expect(await setup(debugPage, '/', 'shared', false, 'debug')).toBe(true)
+          expect(await setup(warnPage, '/', 'shared', false, 'warn')).toBe(true)
+          expect(await setup(quietPage)).toBe(true)
+          await workerLog(quietPage, { lines: SDK_LINES })
+          await until(async () => printed.debug.length + printed.warn.length, (n) => n === 4)
+          await Bun.sleep(500)
+          expect(printed.debug).toEqual([
+            { type: 'debug', text: `[Sia stream worker] ${DEBUG_LINE}` },
+            { type: 'info', text: '[Sia stream worker] Fixture info' },
+            { type: 'warning', text: `[Sia stream worker] ${REDACTED_WARN_LINE}` },
+          ])
+          expect(printed.warn).toEqual([
+            { type: 'warning', text: `[Sia stream worker] ${REDACTED_WARN_LINE}` },
+          ])
+          expect(printed.quiet).toEqual([])
+          expect(await logMessages(debugPage)).toBe(1)
+          expect(await logMessages(warnPage)).toBe(1)
+          expect(await logMessages(quietPage)).toBe(0)
+          // Set once, to the most verbose level asked for.
+          expect((await stats(debugPage)).logLevels).toEqual(['debug'])
+
+          // A closed page stops counting once another page asks.
+          await debugPage.close()
+          const infoPage = await context.newPage()
+          expect(await setup(infoPage, '/', 'shared', false, 'info')).toBe(true)
+          await until(
+            async () => (await stats(infoPage)).logLevels,
+            (levels) => levels.length === 2,
+          )
+          expect((await stats(infoPage)).logLevels).toEqual(['debug', 'info'])
+        }),
+    )
+
+    test('an SDK panic and errors nothing caught in the worker reach a page that asked for errors', () =>
+      withPage(async (page) => {
+        const printed = printedLog(page)
+        expect(await setup(page, '/', 'shared', false, 'error')).toBe(true)
+        await workerLog(page, {
+          lines: SDK_LINES,
+          panic: PANIC,
+          uncaught: 'Fixture failure',
+          rejection: 'Fixture rejection',
+        })
+        await until(async () => printed.length, (n) => n >= 3)
+        await Bun.sleep(500)
+        expect(printed.map(({ text }) => text).sort()).toEqual([
+          '[Sia stream worker] Uncaught Error: Fixture failure',
+          '[Sia stream worker] Unhandled rejection: Error: Fixture rejection',
+          `[Sia stream worker] ${PANIC}`,
+        ])
+        expect(printed.every(({ type }) => type === 'error')).toBe(true)
+      }))
+
+    test('the worker answers a handshake without a logLevel as before, and a page that sets one streams', () =>
+      withPage(async (page) => {
+        expect(await setup(page, '/', 'shared', false, 'debug')).toBe(true)
+        // The handshake a page from before logLevel sends.
+        const reply = await page.evaluate(
+          () =>
+            new Promise((resolve) => {
+              const { port1, port2 } = new MessageChannel()
+              port1.onmessage = ({ data }) => resolve(data)
+              navigator.serviceWorker.controller!.postMessage({ type: 'sia-client' }, [port2])
+            }),
+        )
+        expect(reply).toEqual({ clientId: expect.any(String), supported: true })
+        const url = await create(page, 17)
+        expect(await readAll(page, url)).toEqual(pattern(17))
+      }))
+
+    // Stopping a service worker needs Chromium's DevTools protocol.
+    test.skipIf(browserName !== 'chromium')(
+      'after a worker restart, the page\'s next stream tells the worker its logLevel again',
+      () =>
+        withPage(async (page, context) => {
+          const printed = printedLog(page)
+          expect(await setup(page, '/', 'shared', false, 'info')).toBe(true)
+          const url = await create(page, 17)
+          expect(await readAll(page, url)).toEqual(pattern(17))
+          const session = await context.newCDPSession(page)
+          await session.send('ServiceWorker.enable')
+          await session.send('ServiceWorker.stopAllWorkers')
+          await workerLog(page, { lines: ['[INFO] Before the next stream'] })
+          expect(await readAll(page, url)).toEqual(pattern(17))
+          await workerLog(page, { lines: ['[INFO] After the next stream'] })
+          await until(async () => printed.length, (n) => n >= 1)
+          await Bun.sleep(500)
+          expect(printed).toEqual([
+            { type: 'info', text: '[Sia stream worker] After the next stream' },
+          ])
+          // A worker that kept running would have counted both reads.
+          expect((await stats(page)).calls).toHaveLength(1)
           await session.detach()
         }),
     )
