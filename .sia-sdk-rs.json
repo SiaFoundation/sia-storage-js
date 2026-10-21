@@ -1,4 +1,4 @@
 {
-  "napi": "sia_storage_napi/v0.11.1",
-  "wasm": "sia_storage_wasm/v0.8.1"
+  "napi": "sia_storage_napi/v0.11.2",
+  "wasm": "sia_storage_wasm/v0.8.2"
 }
