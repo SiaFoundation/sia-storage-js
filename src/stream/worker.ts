@@ -3,6 +3,7 @@ import type {
   ShardProgress,
 } from '../../wasm/sia_storage_wasm.js'
 import { streamErrorMessage } from './errors'
+import { createLogRelay } from './logs'
 import {
   type ClientReply,
   isSourceReply,
@@ -12,6 +13,7 @@ import {
   type Connection,
   type SourceDetails,
   type StreamEvent,
+  type StreamLogLevel,
   type StreamStatus,
   type WorkerMessage,
 } from './protocol'
@@ -66,6 +68,14 @@ export type StreamScope = {
   addEventListener(type: 'install' | 'activate', listener: (event: WaitUntil) => void): void
   addEventListener(type: 'message', listener: (event: StreamMessageEvent) => void): void
   addEventListener(type: 'fetch', listener: (event: StreamFetchEvent) => void): void
+  addEventListener(
+    type: 'error',
+    listener: (event: { error?: unknown; message?: string }) => void,
+  ): void
+  addEventListener(
+    type: 'unhandledrejection',
+    listener: (event: { reason?: unknown }) => void,
+  ): void
 }
 type Metadata = Pick<
   SourceDetails,
@@ -124,11 +134,17 @@ type Job = {
 // The control port carries credentials and metadata only. Bytes never leave
 // this worker, since each response consumes the SDK's own stream with native
 // backpressure.
+//
+// `onLogLevel` gets the level to set the SDK's logger to, whenever the pages
+// that asked for the worker's log change it. The returned `sdkLog` takes the
+// lines that logger reports.
 export function serveStreams(
   scope: StreamScope,
   connect: (connection: Connection) => Promise<StreamSdk>,
   supportsDownloads: boolean,
+  onLogLevel: (level: StreamLogLevel | 'off') => void = () => {},
 ) {
+  const logs = createLogRelay(scope, onLogLevel)
   const sources = new Map<string, Source>()
   const sessions = new Map<string, Session>()
   // Released session keys. A page reply already in flight when its share is
@@ -261,6 +277,7 @@ export function serveStreams(
       if (source.closed || released.has(key(client.id, reply.session))) {
         throw new DOMException('Released', 'AbortError')
       }
+      logs.subscribe(client, reply.logLevel)
       const session = sessionFor(client.id, reply)
       source.session = session
       session.sources.add(source)
@@ -449,6 +466,7 @@ export function serveStreams(
     if (!clientId) return
     const data = event.data as PageMessage | undefined
     if (data?.type === 'sia-client') {
+      logs.subscribe(source as StreamClient, data.logLevel)
       const reply: ClientReply = { clientId, supported: supportsDownloads }
       event.ports[0]?.postMessage(reply)
       event.ports[0]?.close()
@@ -482,6 +500,7 @@ export function serveStreams(
       serve(event.request, stream.clientId, stream.token, { download, warm }),
     )
   })
+  return { sdkLog: logs.sdk }
 }
 
 /**

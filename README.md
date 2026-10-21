@@ -126,6 +126,16 @@ videoElement.src = video.url
 playButton.onpointerenter = () => void video.warm()
 ```
 
+### See the worker's log
+
+A service worker's console is separate from the page's, so an error inside the worker, such as an SDK panic that stops every stream it serves, shows nowhere you usually look. Pass `logLevel` to `enableStreaming`, before the first `openStreams`, to print the worker's log in the page's console:
+
+```ts
+enableStreaming({ logLevel: 'warn' })
+```
+
+`logLevel` is `error`, `warn`, `info`, `debug` or `trace`, and each level includes the ones before it. `error` covers SDK panics and errors the worker did not catch. `warn` adds failed shard downloads and host list refreshes, and `debug` adds each host connection and each shard read. Each line starts with `[Sia stream worker]` and prints with the matching console method. Lines arrive in batches every 250 ms, and errors at once. The worker cuts the query string and fragment from every URL in a line, since the SDK signs its indexer requests in the query string. The log is the worker's, so it also has lines for other tabs of the site that are streaming. Off by default.
+
 ### Serve the worker
 
 The worker is one file, `sia-storage-sw.js`, served from your site's root. Use the line for your setup.
@@ -329,7 +339,7 @@ From `sharedSdk.objectSummaries()`.
 | `streams.url(object, options)` | `{ url, blob?, warm(), release() }`. Streams where it can, else reads the whole object into `blob`. |
 | `streams.download(object, options)` | Saves the object. Resolves `'streaming'`, `'saved'` or `'cancelled'`. Call it from a click handler. |
 | `streams.close()` | Cancels this handle's streams. Other handles on the same SDK keep theirs. |
-| `enableStreaming(options?)` | Registers the worker and resolves whether streaming is on. `openStreams` calls it for you, so call it only to pass `workerUrl`, `scope` or `type`. |
+| `enableStreaming(options?)` | Registers the worker and resolves whether streaming is on. `openStreams` calls it for you, so call it only to pass `workerUrl`, `scope`, `type` or `logLevel`. |
 
 `options` for `url` and `download`: `name`, `type` (MIME), `onError(message)` for failures after streaming starts (logged when omitted), `onStatus`, `onProgress` and `onShard` (see [Status and progress](#status-and-progress)), and `signal` for `url`.
 

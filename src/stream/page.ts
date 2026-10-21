@@ -22,16 +22,20 @@ import {
   type ClientReply,
   type Connection,
   isAppMetadata,
+  isLogLevel,
+  LOG_LEVELS,
+  type LogLine,
   type PageMessage,
   requestReply,
   type SourceReply,
   type StreamEvent,
+  type StreamLogLevel,
   streamPath,
   type WorkerMessage,
 } from './protocol'
 
 export type { FileEvents } from './fallback'
-export type { StreamStatus } from './protocol'
+export type { StreamLogLevel, StreamStatus } from './protocol'
 
 export type StreamingOptions = {
   /** Where the site serves the worker file. Defaults to `/sia-storage-sw.js`. */
@@ -40,6 +44,15 @@ export type StreamingOptions = {
   scope?: string
   /** `'module'` when `workerUrl` is an ES module worker of your own. */
   type?: WorkerType
+  /**
+   * Prints the streaming worker's log in this page's console, which otherwise
+   * never shows it, prefixed `[Sia stream worker]`. That is the SDK's log at
+   * this level and above, and at `error`, any SDK panic and any error the
+   * worker did not catch. Off when unset. URL query strings and fragments are
+   * cut from each line, since indexer requests are signed in theirs. The log
+   * covers every page the worker serves, not only this one's streams.
+   */
+  logLevel?: StreamLogLevel
 }
 
 /** What a `SharedSdk` was connected with. */
@@ -177,6 +190,7 @@ async function initialize({
   workerUrl = DEFAULT_WORKER_URL,
   scope,
   type,
+  logLevel,
 }: StreamingOptions) {
   if (
     typeof window === 'undefined' ||
@@ -212,7 +226,10 @@ async function initialize({
   }
   const controller = serviceWorker.controller
   if (!controller) return false
-  const request = { type: 'sia-client' } satisfies PageMessage
+  const request = {
+    type: 'sia-client',
+    ...(logLevel && { logLevel }),
+  } satisfies PageMessage
   const reply = (await requestReply(controller, request, {
     signal: deadline,
   })) as ClientReply
@@ -455,6 +472,8 @@ function onWorkerMessage(event: MessageEvent) {
       entry.received += data.bytes
       notify(onProgress, entry.received)
     }
+  } else if (data?.type === 'sia-log') {
+    if (Array.isArray(data.lines)) data.lines.forEach(printLogLine)
   } else if (data?.type === 'sia-source') {
     const port = event.ports[0]
     if (!port) return
@@ -475,9 +494,29 @@ function onWorkerMessage(event: MessageEvent) {
             mime: entry.mime,
             name: entry.name,
             ...(events.length > 0 && { events }),
+            ...(initOptions.logLevel && { logLevel: initOptions.logLevel }),
           }
         : { type: 'error' }
     port.postMessage(reply)
     port.close()
   }
+}
+
+/**
+ * Checked here too, since the worker can come from a different deploy, so a
+ * page that set no `logLevel` never prints a line.
+ */
+function printLogLine(line: LogLine) {
+  const wanted = initOptions.logLevel
+  if (
+    !wanted ||
+    !isLogLevel(line?.level) ||
+    typeof line.message !== 'string' ||
+    LOG_LEVELS.indexOf(line.level) > LOG_LEVELS.indexOf(wanted)
+  ) {
+    return
+  }
+  // console.trace would add this page's own stack to every line.
+  const method = line.level === 'trace' ? 'debug' : line.level
+  console[method](`[Sia stream worker] ${line.message}`)
 }

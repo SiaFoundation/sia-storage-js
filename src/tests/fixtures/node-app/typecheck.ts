@@ -12,8 +12,15 @@ void total
 
 // The Node typings declare the browser's streaming types by hand. Code shared
 // with the browser has to typecheck against them, so they must keep up.
-import type { FileEvents, StreamStatus } from '@siafoundation/sia-storage'
+import {
+  enableStreaming,
+  type FileEvents,
+  type StreamLogLevel,
+  type StreamStatus,
+} from '@siafoundation/sia-storage'
 
 const idle: StreamStatus = 'idle'
 const events: FileEvents = { onStatus: (status) => void (status === idle) }
 void events
+const logLevel: StreamLogLevel = 'debug'
+void enableStreaming({ logLevel })

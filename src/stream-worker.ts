@@ -11,9 +11,10 @@ import wasmInit, {
   Builder,
   type InitInput,
   PinnedObject,
+  setLogger,
   SharedSdk,
 } from '../wasm/sia_storage_wasm.js'
-import type { Connection } from './stream/protocol'
+import type { Connection, StreamLogLevel } from './stream/protocol'
 import { serveStreams, type StreamScope, type StreamSdk } from './stream/worker'
 
 export type { StreamScope }
@@ -31,13 +32,25 @@ export function installStreams(
   options: InstallStreamsOptions = {},
 ) {
   let ready: Promise<unknown> | undefined
-  serveStreams(
+  let running = false
+  // Undefined until a page asks for the log, so a worker whose pages never do
+  // leaves the SDK's logger alone.
+  let logLevel: StreamLogLevel | 'off' | undefined
+  // setLogger needs the WebAssembly running, which starts on the first connect.
+  const applyLogLevel = () => {
+    if (running && logLevel) setLogger(sdkLog, logLevel)
+  }
+  const { sdkLog } = serveStreams(
     scope,
     async (connection) => {
       ready ??= wasmInit(
         options.wasm === undefined ? undefined : { module_or_path: options.wasm },
       )
       await ready
+      if (!running) {
+        running = true
+        applyLogLevel()
+      }
       return connection.kind === 'shared'
         ? connectShared(connection)
         : connectApp(connection)
@@ -45,6 +58,10 @@ export function installStreams(
     // Downloads from hosts need WebTransport, which some browsers leave out
     // of service workers. The page then reads objects itself.
     typeof WebTransport === 'function',
+    (level) => {
+      logLevel = level
+      applyLogLevel()
+    },
   )
 }
 

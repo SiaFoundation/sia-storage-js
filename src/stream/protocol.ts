@@ -22,6 +22,25 @@ import type {
  */
 export type StreamStatus = 'connecting' | 'downloading' | 'idle'
 
+/**
+ * How much of the worker's log a page asked for. Each level includes the ones
+ * before it, so `warn` gets warnings and errors.
+ */
+export type StreamLogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace'
+export const LOG_LEVELS: readonly StreamLogLevel[] = [
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+]
+
+export const isLogLevel = (value: unknown): value is StreamLogLevel =>
+  LOG_LEVELS.includes(value as StreamLogLevel)
+
+/** One line of the worker's log, already redacted. */
+export type LogLine = { level: StreamLogLevel; message: string }
+
 /** The reports a page can ask for, one per callback it was given. */
 export type StreamEvent = 'status' | 'progress' | 'shards'
 const STREAM_EVENTS: readonly unknown[] = ['status', 'progress', 'shards']
@@ -51,11 +70,15 @@ export type SourceDetails = {
   // The reports the page wants for this URL. The worker sends no others, and
   // asks the SDK for shard reports only when `shards` is here.
   events?: StreamEvent[]
+  // The page's `logLevel`, sent again here because a worker the browser
+  // stopped and started since the handshake has forgotten it.
+  logLevel?: StreamLogLevel
 }
 
 /** Page to worker. */
 export type PageMessage =
-  | { type: 'sia-client' }
+  // A page from before `logLevel` existed sends none, and gets no log lines.
+  | { type: 'sia-client'; logLevel?: StreamLogLevel }
   | { type: 'sia-release'; token: string }
   | { type: 'sia-release-share'; session: string }
   // Sent while the worker reports `sia-streaming` active. The event it raises
@@ -83,6 +106,9 @@ export type WorkerMessage =
       bytes: number
       shards: ShardProgress[]
     }
+  // Sent only to a page that asked for a `logLevel`, with only the lines at
+  // that level or above.
+  | { type: 'sia-log'; lines: LogLine[] }
 
 /** The worker's answer to `sia-client`. */
 export type ClientReply = { clientId: string; supported: boolean }

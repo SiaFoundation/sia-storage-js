@@ -32,6 +32,19 @@ export type FixtureStats = {
   lookups: number
   // Shared connections that came with a key to open sealed objects.
   sealKeys: number
+  // Each level the worker asked to set the SDK's logger to.
+  logLevels: string[]
+}
+/**
+ * What the worker reports when a test asks: `lines` as the SDK's logger
+ * formats them, a `panic` message as the SDK's panic hook prints it, and an
+ * error thrown and a promise rejected with nothing to catch them.
+ */
+export type FixtureLog = {
+  lines?: string[]
+  panic?: string
+  uncaught?: string
+  rejection?: string
 }
 
 const scope = globalThis as unknown as StreamScope
@@ -45,12 +58,27 @@ const stats: FixtureStats = {
   shardListeners: 0,
   lookups: 0,
   sealKeys: 0,
+  logLevels: [],
 }
 const config: FixtureConfig = { chunkSize: 64 * 1024 }
 
 // Fixture-only RPC. No fixture code or routes are included in the app build.
 scope.addEventListener('message', (event) => {
-  const data = event.data as { type?: string; config?: FixtureConfig } | null
+  const data = event.data as
+    | { type?: string; config?: FixtureConfig; log?: FixtureLog }
+    | null
+  if (data?.type === 'fixture-log') {
+    const { lines = [], panic, uncaught, rejection } = data.log ?? {}
+    for (const line of lines) sdkLog(line)
+    if (panic) console.error(panic)
+    if (uncaught) {
+      setTimeout(() => {
+        throw new Error(uncaught)
+      })
+    }
+    if (rejection) void Promise.reject(new Error(rejection))
+    event.ports[0]?.postMessage(null)
+  }
   if (data?.type !== 'fixture-stats') return
   Object.assign(config, data.config)
   event.ports[0]?.postMessage(stats)
@@ -79,7 +107,7 @@ function wavHeader() {
 
 type MockObject = { id(): string; size(): number; free(): void }
 
-serveStreams(
+const { sdkLog } = serveStreams(
   scope,
   async (connection) => {
   stats.connections++
@@ -171,4 +199,5 @@ serveStreams(
   } as unknown as StreamSdk
   },
   true,
+  (level) => void stats.logLevels.push(level),
 )

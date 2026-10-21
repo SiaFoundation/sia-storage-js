@@ -11,6 +11,7 @@ export type {
   FileOptions,
   SharedCredentials,
   StreamedFile,
+  StreamLogLevel,
   StreamStatus,
   Streams,
   StreamingOptions,
