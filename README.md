@@ -219,6 +219,7 @@ Near-identical surfaces. Real differences:
 - Numeric sizes are `number` on browser, `bigint` on Node. Byte arrays are `Uint8Array` on browser, `Buffer` on Node (`Buffer` is a `Uint8Array` subclass; both accept either as input).
 - Sharing key seeds are hex `string` on browser, `Buffer` on Node. This covers `SharingKey.seed()`, `SharingKey.fromSeed(seed)`, and `SharedSdk.connect(indexerUrl, seed)`.
 - `sharedSdk.objectSummaries(offset, limit)` resolves `ObjectSummary` class instances on browser, which own WASM memory and are disposable like `PinnedObject`. On Node it resolves plain objects.
+- `sdk.objectEventSummaries(cursor?, limit)` exists on browser only. The pinned NAPI version does not expose it yet, so on Node use `sdk.objectEvents(cursor?, limit)` instead.
 - `sdk.unshareObject(key, object)` takes a `PinnedObject` on browser and an object id `string` on Node.
 - `sdk.hosts(query?)` and `sharedSdk.hosts(query?)` accept a `HostQuery` on browser; on Node they take no arguments.
 - `openStreams` gives a browser page URLs that a service worker serves. Node reads objects with `sdk.download(object, { offset, length })`, which already streams a range, so it needs no worker. On Node, `enableStreaming()` resolves false, and `url` and `download` on an `openStreams` handle reject.
@@ -250,6 +251,7 @@ Returned from `Builder.register()`, `Builder.connected()`, or `Builder.connectPr
 | `updateObjectMetadata(object)` | Push local metadata changes to the indexer. |
 | `objectShareUrl(object, validUntil)` / `objectFromShareUrl(url)` | Create / consume share URLs. |
 | `objectEvents(cursor?, limit)` | Paginated change feed. |
+| `objectEventSummaries(cursor?, limit)` | The same change feed without the objects' slabs, which is much smaller than `objectEvents`. Each event carries an `ObjectSummary`, which cannot be downloaded. Fetch the full object with `object(key)` for that. Browser only, until the NAPI pin catches up. |
 | `hosts(query?)` / `account()` / `pruneSlabs(before?)` | Indexer reads. `pruneSlabs` unpins slabs no object uses; `before` limits it to slabs pinned before that date, and omitting it leaves the cutoff to the indexer. |
 | `createSharingKey(description, expiresAt?)` | Create a `SharingKey` for read-only sharing. |
 | `sharingKeys(offset, limit)` / `sharingKey(key)` | List keys / fetch one key's `KeyRecord`. |
@@ -317,9 +319,15 @@ sharing key's seed. Downloads are paid for by the key's owner.
 
 ### `ObjectSummary`
 
-From `sharedSdk.objectSummaries()`.
+From `sdk.objectEventSummaries()` and `sharedSdk.objectSummaries()`.
 
 `id` · `size` · `metadata` · `createdAt` · `updatedAt`
+
+### `ObjectEventSummary`
+
+From `sdk.objectEventSummaries()`. Browser only, until the NAPI pin catches up.
+
+`id` · `deleted` · `updatedAt` · `object`
 
 ### Streaming
 

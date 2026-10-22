@@ -29,6 +29,7 @@ export {
   Builder,
   KeyRecord,
   ObjectEvent,
+  ObjectEventSummary,
   ObjectSummary,
   PackedUpload,
   PinnedObject,
