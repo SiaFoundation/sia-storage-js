@@ -7,17 +7,10 @@
 # Idempotent: the changeset filename is stable, and the comparison is
 # current-vs-latest, so re-running with no upstream changes is a no-op.
 #
-# Upstream assumption (relevant if things ever go wrong): napi and wasm
-# release tags share a single commit. Upstream's release CI tags every
-# workspace crate at once — release "bursts" span 1-2 seconds, verifiable
-# via `gh release list -R SiaFoundation/sia-sdk-rs`. The crate version
-# numbers themselves diverge (e.g. napi v0.7.x, wasm v0.3.x), which is why
-# .sia-sdk-rs.json tracks each separately. If upstream ever stopped doing
-# this and tagged napi and wasm at different commits, ci.yml (which clones
-# once at the napi tag and builds both crates from that clone) would test
-# wasm built from the napi-tag commit while release.yml's build-wasm job
-# publishes from the wasm-tag commit — CI green, runtime mismatch in npm.
-# Remedy if that happens: make ci.yml clone twice (once per tag).
+# Upstream releases only the crates that changed, so the napi and wasm tags can
+# be on different commits (wasm v0.8.3 was released without a napi release).
+# .sia-sdk-rs.json tracks each separately, ci.yml builds each binding from its
+# own tag, and release.yml's build jobs already clone each tag on its own.
 name: Check SDK Update
 
 on:
