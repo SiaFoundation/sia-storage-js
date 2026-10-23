@@ -31,10 +31,10 @@ jobs:
       - name: Read sia-sdk-rs version
         id: sdk
         shell: bash
-        # CI clones once at the napi tag and builds BOTH napi and wasm from
-        # this single clone. Relies on the upstream invariant that napi and
-        # wasm release tags share a commit (see check-sdk-update.yml header
-        # for the failure mode if that ever changes).
+        # CI clones at the napi tag and builds the NAPI binary from it, then
+        # checks the same clone out at the wasm tag for the WASM build. A
+        # release can tag one crate without the other, so the two tags can be
+        # on different commits.
         run: echo "ref=$(jq -r .napi .sia-sdk-rs.json)" >> "$GITHUB_OUTPUT"
 
       - name: Clone Rust SDK
@@ -77,6 +77,12 @@ jobs:
           cp rust/sia-sdk-rs/sia_storage_napi/sia-storage.darwin-arm64.node node_modules/@siafoundation/sia-storage-darwin-arm64/sia-storage.node
           echo '{"name":"@siafoundation/sia-storage-darwin-arm64","main":"sia-storage.node"}' > node_modules/@siafoundation/sia-storage-darwin-arm64/package.json
           cp rust/sia-sdk-rs/sia_storage_napi/index.d.ts src/node/napi.generated.d.ts
+
+      - name: Check out the WASM tag
+        run: |
+          ref=$(jq -r .wasm .sia-sdk-rs.json)
+          git -C rust/sia-sdk-rs fetch --depth 1 origin "refs/tags/$ref:refs/tags/$ref"
+          git -C rust/sia-sdk-rs checkout -q "$ref"
 
       - name: Build WASM
         run: bun run build-wasm
