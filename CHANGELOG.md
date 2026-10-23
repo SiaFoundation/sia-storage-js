@@ -1,4 +1,24 @@
 # Changelog
+## 0.1.6 (2026-10-23)
+
+### Features
+
+#### Update sia-sdk-rs (napi v0.11.2, wasm v0.8.3)
+
+Adds `Sdk.objectEventSummaries(cursor?, limit)` and the `ObjectEventSummary` class it
+returns, which lists the same object events as `objectEvents` without the objects'
+slabs, so the response is much smaller. Each event carries an `ObjectSummary`; fetch the
+full object with `Sdk.object(id)` to download it. The release also fixes connecting to
+hosts that announce an IPv6 address, a crash reading a slab whose sectors include a host
+the SDK does not know, and account tokens expiring before a read reaches the host. In the browser, it also
+closes WebTransport streams whose open was abandoned, which piled up until a host stopped
+accepting new ones, and stops redialing hosts that refused a handshake, whose failures
+made Chrome delay every new connection by up to a minute.
+
+#### Print the streaming worker's log in the page with `logLevel`
+
+`enableStreaming({ logLevel })` prints the streaming service worker's log in the page's console, prefixed `[Sia stream worker]`. A service worker's console is separate from the page's, so a panic in the SDK inside the worker froze a video with nothing in the page's console to say why. The page receives the SDK's log at the level it asked for and above, and at `error` also SDK panics and errors the worker did not catch. The worker sets the SDK's logger only once a page asks, to the most verbose level any open page asked for, and sends lines in batches every 250 ms, with errors at once. It cuts the query string and fragment from every URL in a line, since the SDK signs its indexer requests in the query string. Off by default. A page and worker from different versions still work together: a page without `logLevel` gets no lines, and a worker from before it ignores the option.
+
 ## 0.1.5 (2026-10-19)
 
 ### Fixes
