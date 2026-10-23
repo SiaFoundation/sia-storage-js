@@ -1,8 +1,6 @@
-// Clone sia-sdk-rs into rust/sia-sdk-rs at the version listed in
-// .sia-sdk-rs.json. Relies on the upstream invariant that napi and wasm
-// release tags share a commit, so cloning at the napi tag puts both crates
-// in the correct state (see .github/workflows/check-sdk-update.yml for the
-// full assumption + failure mode).
+// Clone sia-sdk-rs into rust/sia-sdk-rs at the napi version listed in
+// .sia-sdk-rs.json. The WASM can be pinned to a tag on another commit, and
+// scripts/build-wasm.ts clones that tag itself when it is.
 import { execSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

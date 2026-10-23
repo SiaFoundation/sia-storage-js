@@ -5,10 +5,8 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectDir = resolve(__dirname, '..')
-const sdkDir = resolve(projectDir, 'rust/sia-sdk-rs')
-const wasmCrateDir = resolve(sdkDir, 'sia_storage_wasm')
-const pkgOutDir = resolve(wasmCrateDir, 'pkg')
 const wasmOut = resolve(projectDir, 'wasm')
+const REPO = 'https://github.com/SiaFoundation/sia-sdk-rs.git'
 
 const force = process.argv.includes('--force')
 
@@ -23,10 +21,44 @@ if (
   process.exit(0)
 }
 
+const { wasm: wasmTag } = JSON.parse(
+  readFileSync(resolve(projectDir, '.sia-sdk-rs.json'), 'utf-8'),
+) as { wasm: string }
+
+/** Whether the clone at `dir` has `tag` checked out. */
+function isAtTag(dir: string, tag: string) {
+  if (!existsSync(dir)) return false
+  try {
+    const at = (rev: string) =>
+      execSync(`git -C ${dir} rev-parse -q --verify ${rev}`, { encoding: 'utf-8' }).trim()
+    return at('HEAD') === at(`refs/tags/${tag}^{commit}`)
+  } catch {
+    return false
+  }
+}
+
+// `bun run setup` clones sia-sdk-rs at the napi tag. A release tags only the
+// crates that changed, so the wasm tag can be on another commit, and the WASM
+// then builds from a clone of its own. CI and release.yml check the main clone
+// out at the wasm tag before this runs, so they use it as it is.
+const mainDir = resolve(projectDir, 'rust/sia-sdk-rs')
+let sdkDir = mainDir
+if (!isAtTag(mainDir, wasmTag)) {
+  sdkDir = resolve(projectDir, 'rust/sia-sdk-rs-wasm')
+  if (!isAtTag(sdkDir, wasmTag)) {
+    console.log(`Cloning ${REPO} at ${wasmTag} into ${sdkDir}...`)
+    execSync(`rm -rf ${sdkDir}`)
+    execSync(
+      `git clone --branch ${wasmTag} --single-branch --depth 1 ${REPO} ${sdkDir}`,
+      { stdio: 'inherit' },
+    )
+  }
+}
+const wasmCrateDir = resolve(sdkDir, 'sia_storage_wasm')
+const pkgOutDir = resolve(wasmCrateDir, 'pkg')
+
 if (!existsSync(wasmCrateDir)) {
-  console.error(
-    `Error: sia_storage_wasm crate not found at ${wasmCrateDir}. Run 'bun run setup' first.`,
-  )
+  console.error(`Error: sia_storage_wasm crate not found at ${wasmCrateDir}.`)
   process.exit(1)
 }
 
