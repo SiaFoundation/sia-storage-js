@@ -1,4 +1,30 @@
 # Changelog
+## 0.2.0 (2026-10-28)
+
+### Breaking Changes
+
+#### `Builder.connectPreAuthorized` takes a `PreAuthorizedKey`
+
+`Builder.connectPreAuthorized(key, phrase)` now takes a `PreAuthorizedKey` instead of the
+key's 32-byte seed. Callers holding a seed can pass `PreAuthorizedKey.import(seed)`.
+
+### Features
+
+- Host performance metrics and the price cache are now shared across all SDK instances.
+
+#### Added `PreAuthorizedKey` helpers for random key generation, seed import/export, and signing indexer creation requests.
+
+Exports `PreAuthorizedKey` from both the browser and Node entry points, along with the
+`PreAuthorizedKeyRequest` and `SignedPreAuthorizedKeyRequest` types on the browser entry
+point. The key generates itself with `new PreAuthorizedKey()` or imports a 32-byte seed
+with `PreAuthorizedKey.import(seed)`, exports that seed again, signs and verifies
+messages, and signs a request that creates the key in the indexer.
+
+### Fixes
+
+- Fixed an Android crash on the first HTTPS request in apps that load React Native.
+- Appending data now efficiently repacks the last slab when it is not full.
+
 ## 0.1.6 (2026-10-23)
 
 ### Features
