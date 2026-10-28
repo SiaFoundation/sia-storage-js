@@ -281,13 +281,20 @@ Returned from `Builder.register()`, `Builder.connected()`, or `Builder.connectPr
 | `connected(appKey)` | Reconnect with a saved `AppKey` → `Sdk \| null`. |
 | `reconnecting()` | Whether the approved connect key already has an account. |
 | `matchesExistingAppKey(phrase)` | Whether a phrase derives an already-registered app key. |
-| `connectPreAuthorized(seed, phrase)` | Skip the approval flow with a pre-authorized key's 32-byte seed → `Sdk`. |
+| `connectPreAuthorized(key, phrase)` | Skip the approval flow with a `PreAuthorizedKey` → `Sdk`. |
 
 ### `AppKey`
 
 `new AppKey(seed)` — 32-byte `Uint8Array`.
 
 `publicKey()` · `sign(message)` · `verifySignature(message, signature)` · `export()`
+
+### `PreAuthorizedKey`
+
+`new PreAuthorizedKey()` generates one, or `PreAuthorizedKey.import(seed)` from a 32-byte
+seed. Pass it to `Builder.connectPreAuthorized()` to skip the approval flow.
+
+`publicKey()` · `sign(message)` · `verifySignature(message, signature)` · `export()` · `signRequest(request)` — signs a `PreAuthorizedKeyRequest` (`connectKey`, `expiration`, `totalUses`, optional `allowedAppID`) into a `SignedPreAuthorizedKeyRequest` for the indexer.
 
 ### `PinnedObject`
 

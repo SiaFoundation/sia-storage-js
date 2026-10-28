@@ -13,6 +13,7 @@ export const {
   SharingKey,
   KeyRecord,
   SharedSdk,
+  PreAuthorizedKey,
   generateRecoveryPhrase,
   validateRecoveryPhrase,
   setLogger,
