@@ -1,6 +1,6 @@
-Built from sia-sdk-rs 03293b8 (sweetest branch, one patch on sia_storage_wasm/v0.8.5 and sia_storage_napi/v0.11.4)
+Built from sia-sdk-rs db119d4 (sweetest branch, two patches on sia_storage_wasm/v0.8.5 and sia_storage_napi/v0.11.4)
 Wrapper 0.2.0 plus the finalizePacked patch. See SWEETEST.md.
 
-504c511a6eccc5d3c80dac2d55fdf2323bb305bfad2530e31e7624e42b2d1682  wasm/sia_storage_wasm_bg.wasm
+725a97686f4dc7343b9c4f606978c8a09ae9b0f2fabfe14d82deb6bc02b2f7c1  wasm/sia_storage_wasm_bg.wasm
 0890400c40f8e40b8df086e3b0a829fa7c211ae100e64df174426b2656df685d  dist/index.js
 c0d8fb7e06f41b4c1c2c30e63f5ee65f0c8b0d2a89b1fa00d74056f94aba6b98  dist/index.node.cjs

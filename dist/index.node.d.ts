@@ -464,6 +464,7 @@ export interface PackedUploadOptions {
   dataShards?: number
   parityShards?: number
   onShardUploaded?: (progress: ShardProgress) => void
+  onShardAttempted?: (attempt: ShardAttemptInfo) => void
 }
 
 /** A sector stored on a specific host. */
@@ -501,6 +502,16 @@ export interface SealedObject {
  */
 export declare function setLogger(callback: (message: string) => void, level: "off" | "error" | "warn" | "info" | "debug" | "trace"): void
 
+/** One shard write attempt, successful or not. `error` is `None` on success. */
+export interface ShardAttemptInfo {
+  hostKey: string
+  shardIndex: number
+  slabIndex: number
+  ok: boolean
+  elapsedMs: number
+  error?: string
+}
+
 /** Progress information about a successfully uploaded or downloaded shard. */
 export interface ShardProgress {
   hostKey: string
@@ -537,6 +548,7 @@ export interface UploadOptions {
   parityShards?: number
   startOffset?: bigint
   onShardUploaded?: (progress: ShardProgress) => void
+  onShardAttempted?: (attempt: ShardAttemptInfo) => void
 }
 
 /** Validates a BIP-39 recovery phrase. */

@@ -126,6 +126,18 @@ export interface Account {
 }
 
 /**
+ * One shard write attempt, successful or not. `error` is `None` on success.
+ */
+export interface ShardAttemptInfo {
+    hostKey: string;
+    shardIndex: number;
+    slabIndex: number;
+    ok: boolean;
+    elapsedMs: number;
+    error: string | undefined;
+}
+
+/**
  * Progress information about a successfully uploaded or downloaded shard.
  */
 export interface ShardProgress {
