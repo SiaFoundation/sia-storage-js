@@ -677,11 +677,15 @@ export class PackedUpload {
     /**
      * Finalizes the packed upload and returns the resulting objects.
      * Each object must be pinned separately with `sdk.pinObject()`.
+     *
+     * Borrows instead of consuming `self`, so the handle stays alive and
+     * [cancel](Self::cancel) can still be called while this future runs. The
+     * core already races the work against the cancel token and drops the
+     * upload when it fires, which aborts in-flight slab tasks.
      * @returns {Promise<PinnedObject[]>}
      */
     finalize() {
-        const ptr = this.__destroy_into_raw();
-        const ret = wasm.packedupload_finalize(ptr);
+        const ret = wasm.packedupload_finalize(this.__wbg_ptr);
         return ret;
     }
     /**

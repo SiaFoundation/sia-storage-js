@@ -37,13 +37,13 @@ function isAtTag(dir: string, tag: string) {
   }
 }
 
-// `bun run setup` clones sia-sdk-rs at the napi tag. A release tags only the
-// crates that changed, so the wasm tag can be on another commit, and the WASM
-// then builds from a clone of its own. CI and release.yml check the main clone
-// out at the wasm tag before this runs, so they use it as it is.
+// `bun run setup` clones sia-sdk-rs into rust/sia-sdk-rs. In this fork that
+// checkout is the patched core, held as a submodule, and it is what we want to
+// build even though it is not at the upstream tag. A checkout that does not
+// exist at all falls back to a throwaway clone at the tag, as upstream does.
 const mainDir = resolve(projectDir, 'rust/sia-sdk-rs')
 let sdkDir = mainDir
-if (!isAtTag(mainDir, wasmTag)) {
+if (!existsSync(mainDir)) {
   sdkDir = resolve(projectDir, 'rust/sia-sdk-rs-wasm')
   if (!isAtTag(sdkDir, wasmTag)) {
     console.log(`Cloning ${REPO} at ${wasmTag} into ${sdkDir}...`)
@@ -53,6 +53,8 @@ if (!isAtTag(mainDir, wasmTag)) {
       { stdio: 'inherit' },
     )
   }
+} else if (!isAtTag(mainDir, wasmTag)) {
+  console.log('Building the local core checkout, which is not at the upstream tag.')
 }
 const wasmCrateDir = resolve(sdkDir, 'sia_storage_wasm')
 const pkgOutDir = resolve(wasmCrateDir, 'pkg')

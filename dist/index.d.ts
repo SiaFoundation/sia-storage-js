@@ -4,6 +4,34 @@ export { Account, AppKey, AppMetadata, Builder, DownloadOptions, Host, HostQuery
 declare function detectPrivateRelay(): Promise<boolean>;
 
 /**
+ * A packed upload was cancelled, either by an `AbortSignal` or by a direct
+ * `packed.cancel()`. Distinct from a network failure: nothing was pinned, and
+ * the caller can start the same files again.
+ */
+declare class UploadCancelled extends Error {
+    constructor(message?: string);
+}
+/** What [finalizePacked] needs, so both the wasm and the native binding fit. */
+type CancelablePacked<T> = {
+    finalize(): Promise<T[]>;
+    cancel(): void;
+};
+/**
+ * Finalize a packed upload and return its objects, with a way out.
+ *
+ * Both bindings keep the handle alive through `finalize`, which is what makes
+ * `cancel()` work here: the wasm side borrows instead of consuming. Aborting the
+ * signal cancels the upload, the core drops it, and in-flight shard tasks are
+ * aborted, so hosts are released instead of working on a slab nobody will pin.
+ *
+ * Resolves with the objects, or rejects with [UploadCancelled]. A real failure is
+ * rethrown unchanged, so a caller can tell the two apart.
+ */
+declare function finalizePacked<T>(packed: CancelablePacked<T>, options?: {
+    signal?: AbortSignal;
+}): Promise<T[]>;
+
+/**
  * Messages between a page and its streaming service worker.
  *
  * Stream URLs carry only the page's client id and a random token. When the
@@ -158,4 +186,4 @@ declare function openStreams<S extends Sdk | SharedSdk>(sdk: S, credentials: Cre
 /** Initialize the WASM module. Safe to call multiple times. */
 declare function initSia(): Promise<void>;
 
-export { type AppCredentials, type CredentialsFor, type FileEvents, type FileOptions, type SharedCredentials, type StreamLogLevel, type StreamStatus, type StreamedFile, type StreamingOptions, type Streams, detectPrivateRelay, enableStreaming, initSia, openStreams };
+export { type AppCredentials, type CredentialsFor, type FileEvents, type FileOptions, type SharedCredentials, type StreamLogLevel, type StreamStatus, type StreamedFile, type StreamingOptions, type Streams, UploadCancelled, detectPrivateRelay, enableStreaming, finalizePacked, initSia, openStreams };

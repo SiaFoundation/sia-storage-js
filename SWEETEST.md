@@ -11,9 +11,11 @@ Only the files listed here. Everything else is upstream as released.
 | Commit | Change |
 | --- | --- |
 | fork setup | `.gitignore` keeps `dist/` and `wasm/` tracked, `rust/sia-sdk-rs` is a submodule, `CHECKSUMS.txt` added |
+| `03293b8` (core) | `PackedUpload::finalize` borrows instead of consuming, so `cancel()` still works while it runs |
+| wrapper | `UploadCancelled` and `finalizePacked(packed, { signal })`; `build-wasm` builds the patched submodule instead of a clone at the tag |
 
-The upload patches come next. Until they land, the built artifacts in this repo behave exactly
-like the published `0.2.0` package.
+The patches below are in. `finalizePacked` is the app-facing way to start a packed upload and
+stop it later.
 
 ## Why the artifacts are committed
 

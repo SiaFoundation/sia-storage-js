@@ -33,6 +33,34 @@ async function checkPrivateRelay(userAgent, request) {
   }
 }
 
+// src/packed.ts
+var UploadCancelled = class extends Error {
+  constructor(message = "the upload was cancelled") {
+    super(message);
+    this.name = "UploadCancelled";
+  }
+};
+var isCancelMessage = (message) => /upload closed|upload cancelled/i.test(message);
+async function finalizePacked(packed, options = {}) {
+  const signal = options.signal;
+  if (signal?.aborted) {
+    packed.cancel();
+    throw new UploadCancelled();
+  }
+  const onAbort = () => packed.cancel();
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await packed.finalize();
+  } catch (error) {
+    if (signal?.aborted || error instanceof Error && isCancelMessage(error.message)) {
+      throw new UploadCancelled();
+    }
+    throw error;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
 // src/wasm.ts
 import { AppKey } from "../wasm/sia_storage_wasm.js";
 
@@ -460,9 +488,11 @@ export {
   Sdk,
   SharedSdk,
   SharingKey,
+  UploadCancelled,
   detectPrivateRelay,
   enableStreaming,
   encodedSize,
+  finalizePacked,
   generateRecoveryPhrase,
   initSia,
   openStreams,
