@@ -1,0 +1,4 @@
+[submodule "rust/sia-sdk-rs"]
+	path = rust/sia-sdk-rs
+	url = https://github.com/sweetest-app/sia-sdk-rs.git
+	branch = sweetest
