@@ -13,6 +13,7 @@ Only the files listed here. Everything else is upstream as released.
 | fork setup | `.gitignore` keeps `dist/` and `wasm/` tracked, `rust/sia-sdk-rs` is a submodule, `CHECKSUMS.txt` added |
 | `03293b8` (core) | `PackedUpload::finalize` borrows instead of consuming, so `cancel()` still works while it runs |
 | `db119d4` (core) | `onShardAttempted` reports every shard write attempt, failures included, with the host and the reason |
+| `45dbb8c` (core) | `onShardAttempted` typed in the options interfaces, so the callback is visible to TypeScript |
 | wrapper | `UploadCancelled` and `finalizePacked(packed, { signal })`; `build-wasm` builds the patched submodule instead of a clone at the tag |
 
 The patches below are in. `finalizePacked` is the app-facing way to start a packed upload and
