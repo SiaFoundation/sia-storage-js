@@ -3,6 +3,7 @@
 import wasmInit from '../wasm/sia_storage_wasm.js'
 
 export { detectPrivateRelay } from './relay'
+export { UploadCancelled, finalizePacked } from './packed'
 export { enableStreaming, openStreams } from './stream/page'
 export type {
   AppCredentials,

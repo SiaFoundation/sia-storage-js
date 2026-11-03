@@ -1,5 +1,7 @@
 export * from './node/napi'
 export type * from './node/napi'
+export { UploadCancelled, finalizePacked } from './packed'
+export type { CancelablePacked } from './packed'
 
 /** Node's traffic never goes through iCloud Private Relay, which is Safari's. */
 export async function detectPrivateRelay(): Promise<boolean> {
