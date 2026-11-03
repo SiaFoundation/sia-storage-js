@@ -295,8 +295,13 @@ export class Builder {
     responseUrl(): string;
     /**
      * Waits for the user to approve the connection request.
+     *
+     * `intervalMs` is the pause between status checks, defaulting to 5000.
+     * `signal` cancels the wait, returning as soon as the current check ends.
+     * `onCheck` runs after every check, for a caller that wants to show that a
+     * real check happened instead of guessing at the rhythm.
      */
-    waitForApproval(): Promise<void>;
+    waitForApproval(interval_ms?: number | null, signal?: AbortSignal | null, on_check?: Function | null): Promise<void>;
 }
 
 declare class IntoUnderlyingByteSource {
@@ -849,7 +854,7 @@ export interface InitOutput {
     readonly builder_register: (a: number, b: number, c: number) => any;
     readonly builder_requestConnection: (a: number) => any;
     readonly builder_responseUrl: (a: number) => [number, number, number, number];
-    readonly builder_waitForApproval: (a: number) => any;
+    readonly builder_waitForApproval: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly encodedSize: (a: number, b: number, c: number) => [number, number, number];
     readonly generateRecoveryPhrase: () => [number, number];
     readonly init: () => void;
